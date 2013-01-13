@@ -84,7 +84,7 @@ readDirectory basedir ref p = do
 			returnRight $ defaultStats ctx ++ dirStats ++ fileStats
 
 createDirectory :: FilePath -> IORef Status -> FilePath -> FileMode -> IO Errno
-createDirectory basedir ref (_:p) _ = do
+createDirectory _ ref (_:p) _ = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
@@ -98,6 +98,21 @@ createDirectory basedir ref (_:p) _ = do
 			writeIORef ref (Status rNew tsNew)
 			return eOK
 
+removeDirectory :: FilePath -> IORef Status -> FilePath -> IO Errno
+removeDirectory _ ref (_:p) = do
+	let seg = splitDirectories p
+	status <- readIORef ref
+	let r = getRoute status
+	case runRoute r seg of
+		Nothing -> return eNOENT
+		Just (Right _) -> return eNOTDIR
+		Just (Left _) -> do
+			let name = last seg
+			let ts = getTagSet status
+			let tsNew = wipeTag name ts
+			let rNew = buildBaseRoute tsNew
+			writeIORef ref (Status rNew tsNew)
+			return eOK
 
 -- files
 
@@ -129,6 +144,7 @@ fsOps basedir r = defaultFuseOps
 	, fuseOpenDirectory = openDirectory basedir r
 	, fuseReadDirectory = readDirectory basedir r
 	, fuseCreateDirectory = createDirectory basedir r
+	, fuseRemoveDirectory = removeDirectory basedir r
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 
