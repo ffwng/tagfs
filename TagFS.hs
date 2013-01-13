@@ -5,40 +5,61 @@ import TagSet
 
 import System.IO
 import System.FilePath
+import Data.List
 
-data FileEntry = RegularFile FilePath | TagFile [Tag] FilePath
+data Entry = RegularFile FilePath
+	| TagFile [Tag] FilePath
+	| TagDir [Tag] [Entry] FilePath
+	| OtherDir [Entry] FilePath
+	| DirName FilePath
+	deriving Show
 
-getPath :: FileEntry -> FilePath
+getPath :: Entry -> FilePath
 getPath (RegularFile p) = p
 getPath (TagFile _ p) = p
+getPath (TagDir _ _ p) = p
+getPath (OtherDir _ p) = p
+getPath (DirName p) = p
 
-toRoute :: (FilePath -> FileEntry) -> FilePath -> Route FileEntry
+getDirEntries :: Entry -> Maybe [Entry]
+getDirEntries (TagDir _ e _) = Just e
+getDirEntries (OtherDir e _) = Just e
+getDirEntries _ = Nothing
+
+toRoute :: (FilePath -> Entry) -> FilePath -> Route Entry
 toRoute f name = match name >> return (f name)
 
-regularFile :: FilePath -> Route FileEntry
+regularFile :: FilePath -> Route Entry
 regularFile = toRoute RegularFile
 
-tagFile :: [Tag] -> FilePath -> Route FileEntry
-tagFile t = toRoute $ TagFile t
+tagDirEntries :: [Tag] -> TagSet -> [Entry]
+tagDirEntries t ts = tagdirs ++ regfiles where
+		tagdirs = map DirName (tags ts \\ t)
+		regfiles = map RegularFile (files ts)
 
-buildBaseRoute :: TagSet -> Route FileEntry
-buildBaseRoute = buildSubRoute []
+buildBaseRoute :: TagSet -> Route Entry
+buildBaseRoute ts = choice [basedir, buildSubRoute [] ts] where
+	basedir = eor >> return (OtherDir (tagDirEntries [] ts) "/")
 
-buildSubRoute :: [Tag] -> TagSet -> Route FileEntry
+buildSubRoute :: [Tag] -> TagSet -> Route Entry
 buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
 
-tagDirRoute :: [Tag] -> TagSet -> Route FileEntry
+tagDirRoute :: [Tag] -> TagSet -> Route Entry
 tagDirRoute visited ts = choice . map get $ filter (`notElem` visited) (tags ts) where
-	get tag = match tag >> buildSubRoute (tag:visited) (query tag ts)
+	get tag = match tag >> choice [dir, content] where
+		queried = query tag ts
+		visited' = tag:visited
+		dir = eor >> return (TagDir visited' (tagDirEntries visited' queried) tag)
+		content = buildSubRoute (tag:visited) queried
 
-fileRoute :: TagSet -> Route FileEntry
+fileRoute :: TagSet -> Route Entry
 fileRoute ts = choice $ map get (files ts) where
 	get file = regularFile file
 
 tagFileExt :: FilePath
 tagFileExt = ".tags"
 
-tagFileRoute :: TagSet -> Route FileEntry
+tagFileRoute :: TagSet -> Route Entry
 tagFileRoute ts = do
 	name <- capture $ getName . splitExtension
 	let t = queryTags name ts
@@ -52,23 +73,10 @@ tagFileRoute ts = do
 
 -- helper function for easier routing
 
-data Dir = Dir [FilePath] [FileEntry]
+--data Dir = Dir [FilePath] [Entry]
 
-route :: Route FileEntry -> FilePath -> Maybe (Either Dir FileEntry)
-route r (p:ps) = let seg = splitDirectories ps in
-	case runRoute r seg of
-		Nothing -> Nothing
-		Just (Right x) -> Just (Right x)
-		Just (Left dir) -> case getSegments dir of
-			Nothing -> Nothing   -- should never happen
-			Just paths -> Just . Left $ mkDir paths
-	where
-		mkDir :: [(String, Route FileEntry)] -> Dir
-		mkDir = go (Dir [] [])
-		go d [] = d
-		go (Dir d f) ((s,r):xs) = case getLeaf r of
-			Nothing -> go (Dir (s:d) f) xs
-			Just e -> go (Dir d (e:f)) xs
+route :: Route Entry -> FilePath -> Maybe Entry
+route r (p:ps) = let seg = splitDirectories ps in runRoute r seg
 
 {-main = do
 	let ts = fromFiles ["a"] [("1", [])]

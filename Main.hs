@@ -31,7 +31,7 @@ import Data.List
 import System.Posix.Temp
 
 
-data Status = Status { getRoute :: Route FileEntry, getTagSet :: TagSet }
+data Status = Status { getRoute :: Route Entry, getTagSet :: TagSet }
 
 -- helper functions
 
@@ -39,9 +39,12 @@ returnLeft = return . Left
 
 returnRight = return . Right
 
-getEntryStat :: FuseContext -> FilePath -> FileEntry -> IO FileStat
+getEntryStat :: FuseContext -> FilePath -> Entry -> IO FileStat
 getEntryStat _ basedir (RegularFile name) = realFileStat $ basedir </> name
 getEntryStat ctx _ (TagFile tags _) = return $ fileStat ctx (tagFileContentLength tags)
+getEntryStat ctx _ (TagDir _ _ _) = return $ dirStat ctx
+getEntryStat ctx _ (OtherDir _ _) = return $ dirStat ctx
+getEntryStat ctx _ (DirName _) = return $ dirStat ctx
 
 tagFileContent :: [Tag] -> ByteString
 tagFileContent = B.pack . unlines
@@ -60,8 +63,7 @@ getFileStat basedir ref p = do
 	r <- getRoute <$> readIORef ref
 	case route r p of
 		Nothing -> returnLeft eNOENT
-		Just (Right e) -> Right <$> getEntryStat ctx basedir e
-		Just (Left dir) -> returnRight $ dirStat ctx
+		Just e -> Right <$> getEntryStat ctx basedir e
 
 -- directories
 
@@ -77,11 +79,12 @@ readDirectory basedir ref p = do
 	r <- getRoute <$> readIORef ref
 	case route r p of
 		Nothing -> returnLeft eNOENT
-		Just (Right _) -> returnLeft eNOTDIR
-		Just (Left (Dir dirs files)) -> do
-			fileStats <- zip (map getPath files) <$> mapM (getEntryStat ctx basedir) files
-			let dirStats = map (,dirStat ctx) dirs
-			returnRight $ defaultStats ctx ++ dirStats ++ fileStats
+		Just dir -> case getDirEntries dir of
+			Nothing -> returnLeft eNOTDIR
+			Just entries -> do
+				stats <- zip (map getPath entries)
+					<$> mapM (getEntryStat ctx basedir) entries
+				returnRight $ defaultStats ctx ++ stats
 
 createDirectory :: FilePath -> IORef Status -> FilePath -> FileMode -> IO Errno
 createDirectory _ ref (_:p) _ = do
@@ -105,14 +108,14 @@ removeDirectory _ ref (_:p) = do
 	let r = getRoute status
 	case runRoute r seg of
 		Nothing -> return eNOENT
-		Just (Right _) -> return eNOTDIR
-		Just (Left _) -> do
+		Just (TagDir _ _ _) -> do
 			let name = last seg
 			let ts = getTagSet status
 			let tsNew = wipeTag name ts
 			let rNew = buildBaseRoute tsNew
 			writeIORef ref (Status rNew tsNew)
 			return eOK
+		_ -> return eNOTDIR
 
 -- files
 
@@ -147,12 +150,13 @@ fsOps basedir r = defaultFuseOps
 	, fuseRemoveDirectory = removeDirectory basedir r
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
+	
+ts = fromFiles ["boo", "bar", "baz"]
+	[("file1", ["bar"]), ("file2", []), ("file3", [])]
+basedir = "/tmp"
+baseroute = buildBaseRoute ts
+-- ^ for testing purposes only
 
 main = do
-	let ts = fromFiles ["boo", "bar", "baz"]
-		[("file1", ["bar"]), ("file2", []), ("file3", [])]
-	let basedir = "/tmp"
-	-- ^ for testing purposes only
-	let route = buildBaseRoute ts
-	status <- newIORef $ Status route ts
+	status <- newIORef $ Status baseroute ts
 	fuseMain (fsOps basedir status) defaultExceptionHandler

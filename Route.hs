@@ -5,7 +5,13 @@ import Control.Monad
 import Control.Monad.Free
 import Data.Maybe
 
-data Segment a = Match String a | Capture (String -> Maybe a) | Choice [a] | NoRoute
+import Text.PrettyPrint
+
+data Segment a = Match String a
+	| Capture (String -> Maybe a)
+	| Choice [a]
+	| EOR a   -- ^ End Of Route (ha ha)
+	| NoRoute
 	deriving Functor
 
 type Route = Free Segment
@@ -19,14 +25,16 @@ capture = liftF . Capture
 choice :: [Route a] -> Route a
 choice = join . liftF . Choice
 
+eor :: Route ()
+eor = liftF (EOR ())
+
 noRoute :: Route a
 noRoute = liftF NoRoute
 
-runRoute :: Route a -> [String] -> Maybe (Either (Route a) a)
+runRoute :: Route a -> [String] -> Maybe a
 runRoute r s = go r s where
-	go (Pure a) _ = Just (Right a)
-	go (Free NoRoute) _ = Nothing
-	go r' [] = Just $ Left r'
+	go (Pure a) _ = Just a
+	go (Free (EOR a)) [] = runRoute a []
 	go (Free (Match s a)) (x:xs) | s == x = runRoute a xs
 	go (Free (Capture f)) (x:xs) = case f x of
 		Nothing -> Nothing
@@ -34,16 +42,13 @@ runRoute r s = go r s where
 	go (Free (Choice as)) xs = msum $ map (`runRoute` xs) as
 	go _ _ = Nothing
 
-getSegments :: Route a -> Maybe [(String, Route a)]
-getSegments = go where
-	go (Pure _) = Nothing
-	go (Free NoRoute) = Nothing
-	go (Free (Match s r)) = Just [(s, r)]
-	go (Free (Choice as)) = Just . concat . catMaybes $ map getSegments as
-	go _ = Just []
-
-getLeaf :: Route a -> Maybe a
-getLeaf r = case r of
-	Pure a -> Just a
-	_ -> Nothing
-
+prettyRoute :: (Show a) => Route a -> Doc
+prettyRoute (Pure a) = text "return" <+> text (show a)
+prettyRoute (Free (Match p next)) = text "match"
+	<+> doubleQuotes (text p) $+$ prettyRoute next
+prettyRoute (Free (Capture f)) = text "capture <func>"
+	<> text (show (fmap prettyRoute (f "")))
+prettyRoute (Free (Choice cs)) = text "choice"
+	<+> (cat $ map (\r -> text "do" <+> (nest 1 $ prettyRoute r)) cs)
+prettyRoute (Free (EOR a)) = text "eor" $+$ prettyRoute a
+prettyRoute (Free NoRoute) = text "no route"
