@@ -2,11 +2,11 @@
 
 .PHONY: clean mount umount
 
-MAIN_SOURCES := \
-	Main.hs     \
-	Route.hs    \
-	TagFS.hs    \
-	TagSet.hs   \
+MAIN_SOURCES :=   \
+	Main.hs       \
+	Route.hs      \
+	TagFS.hs      \
+	TagSet.hs     \
 	Stat.hs
 
 Main: $(MAIN_SOURCES)

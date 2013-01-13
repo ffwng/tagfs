@@ -23,7 +23,6 @@ import Data.IORef
 import System.Fuse hiding (RegularFile)
 import System.Posix.Types
 import System.Posix.Files
-import System.Posix.IO
 import System.FilePath
 import Control.Arrow (second)
 import Data.ByteString.Char8 (ByteString)
@@ -33,6 +32,7 @@ import System.Posix.Temp
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe
+import Control.Exception
 
 
 data Status = Status
@@ -94,7 +94,7 @@ readDirectory :: IORef Status -> FilePath
 readDirectory ref p = do
 	ctx <- getFuseContext
 	status <- readIORef ref
-	r <- getRoute <$> readIORef ref
+	let r = getRoute status
 	case route r p of
 		Nothing -> returnLeft eNOENT
 		Just dir -> case getDirEntries dir of
@@ -141,6 +141,11 @@ tempFile = do
 	removeLink path
 	return handle
 
+toIOMode :: OpenMode -> OpenFileFlags -> IOMode
+toIOMode ReadOnly _ = ReadMode
+toIOMode WriteOnly (OpenFileFlags a _ _ _ _) = if a then AppendMode else WriteMode
+toIOMode ReadWrite _ = ReadWriteMode
+
 tagfsOpen ::  IORef Status -> FilePath -> OpenMode -> OpenFileFlags
 	-> IO (Either Errno Handle)
 tagfsOpen ref p mode flags = do
@@ -149,8 +154,7 @@ tagfsOpen ref p mode flags = do
 	case route r p of
 		Nothing -> returnLeft eNOENT
 		Just (RegularFile name) -> do
-			fd <- openFd (getRealPath status name) mode Nothing flags
-			h <- fdToHandle fd
+			h <- openFile (getRealPath status name) (toIOMode mode flags)
 			returnRight h
 		Just (TagFile t _ _) -> do
 			h <- tempFile
@@ -199,7 +203,7 @@ tagfsSetFileSize ref p size = do
 -- filesystem
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-getFileSystemStats str =  returnRight FileSystemStats
+getFileSystemStats str = returnRight FileSystemStats
 	{ fsStatBlockSize = 510
 	, fsStatBlockCount = 1
 	, fsStatBlocksFree = 1
