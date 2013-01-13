@@ -19,3 +19,10 @@ mount: Main
 
 umount:
 	fusermount -u test
+
+debug: Main
+	./Main -d test
+
+remount: Main
+	fusermount -u test
+	./Main test

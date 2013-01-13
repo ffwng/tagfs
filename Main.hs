@@ -21,11 +21,17 @@ import Control.Applicative
 import Data.IORef
 import System.Fuse hiding (RegularFile)
 import System.Posix.Types
+import System.Posix.Files
+import System.Posix.IO
 import System.FilePath
 import Control.Arrow (second)
 import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as B
 import Data.List
+import System.Posix.Temp
+
+
+data Status = Status { getRoute :: Route FileEntry, getTagSet :: TagSet }
 
 -- helper functions
 
@@ -48,10 +54,10 @@ parseTags = lines . B.unpack
 
 -- fuse operations
 
-getFileStat :: IORef (Route FileEntry) -> FilePath -> FilePath -> IO (Either Errno FileStat)
-getFileStat ref basedir p = do
+getFileStat :: FilePath -> IORef Status -> FilePath -> IO (Either Errno FileStat)
+getFileStat basedir ref p = do
 	ctx <- getFuseContext
-	r <- readIORef ref
+	r <- getRoute <$> readIORef ref
 	case route r p of
 		Nothing -> returnLeft eNOENT
 		Just (Right e) -> Right <$> getEntryStat ctx basedir e
@@ -61,14 +67,14 @@ getFileStat ref basedir p = do
 
 defaultStats ctx = [(".", dirStat ctx), ("..", dirStat ctx)]
 
-openDirectory :: IORef (Route FileEntry) -> FilePath -> FilePath -> IO Errno
+openDirectory :: FilePath -> IORef Status -> FilePath -> IO Errno
 openDirectory _ _ _ = return eOK
 
-readDirectory :: IORef (Route FileEntry) -> FilePath -> FilePath
+readDirectory :: FilePath -> IORef Status -> FilePath
 	-> IO (Either Errno [(FilePath, FileStat)])
-readDirectory ref basedir p = do
+readDirectory basedir ref p = do
 	ctx <- getFuseContext
-	r <- readIORef ref
+	r <- getRoute <$> readIORef ref
 	case route r p of
 		Nothing -> returnLeft eNOENT
 		Just (Right _) -> returnLeft eNOTDIR
@@ -77,10 +83,29 @@ readDirectory ref basedir p = do
 			let dirStats = map (,dirStat ctx) dirs
 			returnRight $ defaultStats ctx ++ dirStats ++ fileStats
 
+createDirectory :: FilePath -> IORef Status -> FilePath -> FileMode -> IO Errno
+createDirectory basedir ref (_:p) _ = do
+	let seg = splitDirectories p
+	status <- readIORef ref
+	let r = getRoute status
+	case runRoute r seg of
+		Just _ -> return eEXIST
+		_ -> do
+			let name = last seg
+			let ts = getTagSet status
+			let tsNew = createTag name ts
+			let rNew = buildBaseRoute tsNew
+			writeIORef ref (Status rNew tsNew)
+			return eOK
+
+
 -- files
 
 tempFile :: IO Fd
 tempFile = do
+	(path, handle) <- mkstemps "" ""
+	removeLink path
+	handleToFd handle
 
 
 
@@ -98,18 +123,20 @@ getFileSystemStats str =  returnRight FileSystemStats
     }
 
 
-fsOps :: IORef (Route FileEntry) -> FilePath -> FuseOperations Fd
-fsOps r basedir = defaultFuseOps
-	{ fuseGetFileStat = getFileStat r basedir
-	, fuseOpenDirectory = openDirectory r basedir
-	, fuseReadDirectory = readDirectory r basedir
+fsOps :: FilePath -> IORef Status -> FuseOperations Fd
+fsOps basedir r = defaultFuseOps
+	{ fuseGetFileStat = getFileStat basedir r
+	, fuseOpenDirectory = openDirectory basedir r
+	, fuseReadDirectory = readDirectory basedir r
+	, fuseCreateDirectory = createDirectory basedir r
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 
 main = do
-	let files = fromFiles ["boo", "bar", "baz"]
+	let ts = fromFiles ["boo", "bar", "baz"]
 		[("file1", ["bar"]), ("file2", []), ("file3", [])]
 	let basedir = "/tmp"
 	-- ^ for testing purposes only
-	route <- newIORef (buildBaseRoute files)
-	fuseMain (fsOps route basedir) defaultExceptionHandler
+	let route = buildBaseRoute ts
+	status <- newIORef $ Status route ts
+	fuseMain (fsOps basedir status) defaultExceptionHandler
