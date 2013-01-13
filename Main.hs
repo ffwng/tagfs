@@ -30,9 +30,25 @@ import Data.ByteString.Char8 (ByteString)
 import qualified Data.ByteString.Char8 as B
 import Data.List
 import System.Posix.Temp
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.Maybe
 
 
-data Status = Status { getRoute :: Route Entry, getTagSet :: TagSet }
+data Status = Status
+	{ getRoute :: Route Entry
+	, getTagSet :: TagSet
+	, getFileMapping :: Map FilePath FilePath
+	}
+
+getRealPath :: Status -> FilePath -> FilePath
+getRealPath s p = fromMaybe "/dev/null" $ M.lookup p (getFileMapping s)
+
+newStatus :: TagSet -> Map FilePath FilePath -> Status
+newStatus ts m = Status (buildBaseRoute ts) ts m
+
+updateStatus :: Status -> TagSet -> Status
+updateStatus s ts = s { getRoute = buildBaseRoute ts, getTagSet = ts }
 
 -- helper functions
 
@@ -40,10 +56,10 @@ returnLeft = return . Left
 
 returnRight = return . Right
 
-getEntryStat :: FuseContext -> FilePath -> Entry -> IO FileStat
-getEntryStat _ basedir (RegularFile name) = realFileStat $ basedir </> name
-getEntryStat ctx _ (TagFile tags _ _) = return $ fileStat ctx (tagFileContentLength tags)
-getEntryStat ctx _ e | isDir e = return $ dirStat ctx
+getEntryStat :: Status -> FuseContext -> Entry -> IO FileStat
+getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
+getEntryStat _ ctx (TagFile tags _ _) = return $ fileStat ctx (tagFileContentLength tags)
+getEntryStat _ ctx e | isDir e = return $ dirStat ctx
 getEntryStat _ _ _ = error "getEntryStat"
 
 tagFileContent :: [Tag] -> ByteString
@@ -57,25 +73,27 @@ parseTags = lines . B.unpack
 
 -- fuse operations
 
-getFileStat :: FilePath -> IORef Status -> FilePath -> IO (Either Errno FileStat)
-getFileStat basedir ref p = do
+getFileStat :: IORef Status -> FilePath -> IO (Either Errno FileStat)
+getFileStat ref p = do
 	ctx <- getFuseContext
-	r <- getRoute <$> readIORef ref
+	status <- readIORef ref
+	let r = getRoute status
 	case route r p of
 		Nothing -> returnLeft eNOENT
-		Just e -> Right <$> getEntryStat ctx basedir e
+		Just e -> Right <$> getEntryStat status ctx e
 
 -- directories
 
 defaultStats ctx = [(".", dirStat ctx), ("..", dirStat ctx)]
 
-openDirectory :: FilePath -> IORef Status -> FilePath -> IO Errno
-openDirectory _ _ _ = return eOK
+openDirectory :: IORef Status -> FilePath -> IO Errno
+openDirectory _ _ = return eOK
 
-readDirectory :: FilePath -> IORef Status -> FilePath
+readDirectory :: IORef Status -> FilePath
 	-> IO (Either Errno [(FilePath, FileStat)])
-readDirectory basedir ref p = do
+readDirectory ref p = do
 	ctx <- getFuseContext
+	status <- readIORef ref
 	r <- getRoute <$> readIORef ref
 	case route r p of
 		Nothing -> returnLeft eNOENT
@@ -83,11 +101,11 @@ readDirectory basedir ref p = do
 			Nothing -> returnLeft eNOTDIR
 			Just entries -> do
 				stats <- zip (map getPath entries)
-					<$> mapM (getEntryStat ctx basedir) entries
+					<$> mapM (getEntryStat status ctx) entries
 				returnRight $ defaultStats ctx ++ stats
 
-createDirectory :: FilePath -> IORef Status -> FilePath -> FileMode -> IO Errno
-createDirectory _ ref (_:p) _ = do
+createDirectory :: IORef Status -> FilePath -> FileMode -> IO Errno
+createDirectory ref (_:p) _ = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
@@ -97,12 +115,11 @@ createDirectory _ ref (_:p) _ = do
 			let name = last seg
 			let ts = getTagSet status
 			let tsNew = createTag name ts
-			let rNew = buildBaseRoute tsNew
-			writeIORef ref (Status rNew tsNew)
+			writeIORef ref (updateStatus status tsNew)
 			return eOK
 
-removeDirectory :: FilePath -> IORef Status -> FilePath -> IO Errno
-removeDirectory _ ref (_:p) = do
+removeDirectory :: IORef Status -> FilePath -> IO Errno
+removeDirectory ref (_:p) = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
@@ -112,8 +129,7 @@ removeDirectory _ ref (_:p) = do
 			let name = last seg
 			let ts = getTagSet status
 			let tsNew = wipeTag name ts
-			let rNew = buildBaseRoute tsNew
-			writeIORef ref (Status rNew tsNew)
+			writeIORef ref (updateStatus status tsNew)
 			return eOK
 		_ -> return eNOTDIR
 
@@ -125,14 +141,15 @@ tempFile = do
 	removeLink path
 	return handle
 
-tagfsOpen :: FilePath -> IORef Status -> FilePath -> OpenMode -> OpenFileFlags
+tagfsOpen ::  IORef Status -> FilePath -> OpenMode -> OpenFileFlags
 	-> IO (Either Errno Handle)
-tagfsOpen basedir ref p mode flags = do
-	r <- getRoute <$> readIORef ref
+tagfsOpen ref p mode flags = do
+	status <- readIORef ref
+	let r = getRoute status
 	case route r p of
 		Nothing -> returnLeft eNOENT
 		Just (RegularFile name) -> do
-			fd <- openFd (basedir </> name) mode Nothing flags
+			fd <- openFd (getRealPath status name) mode Nothing flags
 			h <- fdToHandle fd
 			returnRight h
 		Just (TagFile t _ _) -> do
@@ -141,21 +158,21 @@ tagfsOpen basedir ref p mode flags = do
 			returnRight h
 		_ -> returnLeft ePERM
 
-tagfsRead :: FilePath -> IORef Status -> FilePath -> Handle -> ByteCount -> FileOffset
+tagfsRead :: IORef Status -> FilePath -> Handle -> ByteCount -> FileOffset
 	-> IO (Either Errno ByteString)
-tagfsRead _ _ _ h count offset = do
+tagfsRead _ _ h count offset = do
 	hSeek h AbsoluteSeek (toInteger offset)
 	Right <$> B.hGet h (fromInteger $ toInteger count)
 
-tagfsWrite :: FilePath -> IORef Status -> FilePath -> Handle -> ByteString -> FileOffset
+tagfsWrite :: IORef Status -> FilePath -> Handle -> ByteString -> FileOffset
 	-> IO (Either Errno ByteCount)
-tagfsWrite _ _ _ h content offset = do
+tagfsWrite _ _ h content offset = do
 	hSeek h AbsoluteSeek (toInteger offset)
 	B.hPut h content
 	returnRight . fromInteger . toInteger $ B.length content
 
-tagfsRelease :: FilePath -> IORef Status -> FilePath -> Handle -> IO ()
-tagfsRelease _ ref p h = do
+tagfsRelease :: IORef Status -> FilePath -> Handle -> IO ()
+tagfsRelease ref p h = do
 	status <- readIORef ref
 	let r = getRoute status
 	case route r p of
@@ -164,17 +181,17 @@ tagfsRelease _ ref p h = do
 			content <- B.hGetContents h
 			let ts = getTagSet status
 			let tsNew = setTags (parseTags content) name ts
-			let rNew = buildBaseRoute tsNew
-			writeIORef ref (Status rNew tsNew)
+			writeIORef ref (updateStatus status tsNew)
 		_ -> return ()
 	hClose h
 
-tagfsSetFileSize :: FilePath -> IORef Status -> FilePath -> FileOffset -> IO Errno
-tagfsSetFileSize basedir ref p size = do
-	r <- getRoute <$> readIORef ref
+tagfsSetFileSize :: IORef Status -> FilePath -> FileOffset -> IO Errno
+tagfsSetFileSize ref p size = do
+	status <- readIORef ref
+	let r = getRoute status
 	case route r p of
 		Nothing -> return eNOENT
-		Just (RegularFile name) -> setFileSize (basedir </> name) size >> return eOK
+		Just (RegularFile name) -> setFileSize (getRealPath status name) size >> return eOK
 		Just (TagFile _ _ _) -> return eOK
 		_ -> return ePERM
 
@@ -192,27 +209,27 @@ getFileSystemStats str =  returnRight FileSystemStats
 	, fsStatMaxNameLength = 255 -- SEEMS SMALL?
 	}
 
-fsOps :: FilePath -> IORef Status -> FuseOperations Handle
-fsOps basedir r = defaultFuseOps
-	{ fuseGetFileStat = getFileStat basedir r
-	, fuseOpenDirectory = openDirectory basedir r
-	, fuseReadDirectory = readDirectory basedir r
-	, fuseCreateDirectory = createDirectory basedir r
-	, fuseRemoveDirectory = removeDirectory basedir r
-	, fuseOpen = tagfsOpen basedir r
-	, fuseRead = tagfsRead basedir r
-	, fuseWrite = tagfsWrite basedir r
-	, fuseRelease = tagfsRelease basedir r
-	, fuseSetFileSize = tagfsSetFileSize basedir r
+fsOps :: IORef Status -> FuseOperations Handle
+fsOps r = defaultFuseOps
+	{ fuseGetFileStat = getFileStat r
+	, fuseOpenDirectory = openDirectory r
+	, fuseReadDirectory = readDirectory r
+	, fuseCreateDirectory = createDirectory r
+	, fuseRemoveDirectory = removeDirectory r
+	, fuseOpen = tagfsOpen r
+	, fuseRead = tagfsRead r
+	, fuseWrite = tagfsWrite r
+	, fuseRelease = tagfsRelease r
+	, fuseSetFileSize = tagfsSetFileSize r
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 	
 ts = fromFiles ["boo", "bar", "baz"]
 	[("file1", ["bar"]), ("file2", []), ("file3", [])]
-basedir = "/tmp"
-baseroute = buildBaseRoute ts
+mapping = M.fromList [("file1", "/tmp/file1"), ("file2", "/tmp/file2"),
+	("file3", "/tmp/file3")]
 -- ^ for testing purposes only
 
 main = do
-	status <- newIORef $ Status baseroute ts
-	fuseMain (fsOps basedir status) defaultExceptionHandler
+	status <- newIORef $ newStatus ts mapping
+	fuseMain (fsOps status) defaultExceptionHandler
