@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 module Main where
 
 {-- semantics:
@@ -25,45 +26,51 @@ import Control.Arrow (second)
 
 -- fuse operations
 
-getFileStat :: IORef (Route FileEntry) -> FilePath -> IO (Either Errno FileStat)
-getFileStat ref (p:ps) = do
-	let seg = splitDirectories ps
+returnLeft = return . Left
+returnRight = return . Right
+
+getEntryStat :: FuseContext -> FilePath -> FileEntry -> IO FileStat
+getEntryStat _ basedir (RegularFile name) = realFileStat $ basedir </> name
+getEntryStat ctx _ (TagFile _ _) = return $ fileStat ctx 0
+
+getFileStat :: IORef (Route FileEntry) -> FilePath -> FilePath -> IO (Either Errno FileStat)
+getFileStat ref basedir p = do
 	ctx <- getFuseContext
 	r <- readIORef ref
-	case runRoute r seg of
-		Just (Right (RegularFile name)) -> Right <$> realFileStat ("/tmp" </> name)
-		Just (Right (TagFile tags name)) -> return . Right $ fileStat ctx 1
-		Just (Left _) -> return . Right $ dirStat ctx
-		Nothing -> return $ Left eNOENT
+	case route r p of
+		Nothing -> returnLeft eNOENT
+		Just (Right e) -> Right <$> getEntryStat ctx basedir e
+		Just (Left dir) -> returnRight $ dirStat ctx
 
-openDirectory :: IORef (Route FileEntry) -> FilePath -> IO Errno
-openDirectory _ _ = return eOK
+-- directories
 
-readDirectory :: IORef (Route FileEntry) -> FilePath
+defaultStats ctx = [(".", dirStat ctx), ("..", dirStat ctx)]
+
+openDirectory :: IORef (Route FileEntry) -> FilePath -> FilePath -> IO Errno
+openDirectory _ _ _ = return eOK
+
+readDirectory :: IORef (Route FileEntry) -> FilePath -> FilePath
 	-> IO (Either Errno [(FilePath, FileStat)])
-readDirectory ref (p:ps) = do
-	let seg = splitDirectories ps
+readDirectory ref basedir p = do
 	ctx <- getFuseContext
 	r <- readIORef ref
-	case runRoute r seg of
-		Nothing -> return $ Left eNOENT
-		Just (Right _) -> return $ Left eNOTDIR
-		Just (Left dir) -> case getSegments dir of
-			Nothing -> return $ Left eNOTDIR
-			Just paths -> do
-				let def = [(".", dirStat ctx), ("..", dirStat ctx)]
-				p <- mapM (findStat ctx) paths
-				return . Right $ def ++ p
-	where
-		findStat ctx (p, r) = do
-			r' <- case getLeaf r of
-				Just (RegularFile name) -> realFileStat ("/tmp" </> name)
-				Just (TagFile tags name) -> return $ fileStat ctx 1
-				Nothing -> return $ dirStat ctx
-			return (p, r')
+	case route r p of
+		Nothing -> returnLeft eNOENT
+		Just (Right _) -> returnLeft eNOTDIR
+		Just (Left (Dir dirs files)) -> do
+			fileStats <- zip (map getPath files) <$> mapM (getEntryStat ctx basedir) files
+			let dirStats = map (,dirStat ctx) dirs
+			returnRight $ defaultStats ctx ++ dirStats ++ fileStats
+
+-- files
+
+
+
+
+-- filesystem
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-getFileSystemStats str =  return $ Right FileSystemStats
+getFileSystemStats str =  returnRight FileSystemStats
     { fsStatBlockSize = 512
     , fsStatBlockCount = 1
     , fsStatBlocksFree = 1
@@ -74,17 +81,18 @@ getFileSystemStats str =  return $ Right FileSystemStats
     }
 
 
-fsOps :: IORef (Route FileEntry) -> FuseOperations Fd
-fsOps r = defaultFuseOps
-	{ fuseGetFileStat = getFileStat r
-	, fuseOpenDirectory = openDirectory r
-	, fuseReadDirectory = readDirectory r
+fsOps :: IORef (Route FileEntry) -> FilePath -> FuseOperations Fd
+fsOps r basedir = defaultFuseOps
+	{ fuseGetFileStat = getFileStat r basedir
+	, fuseOpenDirectory = openDirectory r basedir
+	, fuseReadDirectory = readDirectory r basedir
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 
 main = do
 	let files = fromFiles ["a", "b", "c"]
 		[("file1", ["a"]), ("file2", []), ("file3", [])]
+	let basedir = "/tmp"
 	-- ^ for testing purposes only
 	route <- newIORef (buildBaseRoute files)
-	fuseMain (fsOps route) defaultExceptionHandler
+	fuseMain (fsOps route basedir) defaultExceptionHandler

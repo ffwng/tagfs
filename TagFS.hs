@@ -8,6 +8,10 @@ import System.FilePath
 
 data FileEntry = RegularFile FilePath | TagFile [Tag] FilePath
 
+getPath :: FileEntry -> FilePath
+getPath (RegularFile p) = p
+getPath (TagFile _ p) = p
+
 toRoute :: (FilePath -> FileEntry) -> FilePath -> Route FileEntry
 toRoute f name = match name >> return (f name)
 
@@ -45,6 +49,27 @@ tagFileRoute ts = do
 		getName (name, ext) | ext == tagFileExt = Just name
 		getName _ = Nothing
 
+
+-- helper function for easier routing
+
+data Dir = Dir [FilePath] [FileEntry]
+
+route :: Route FileEntry -> FilePath -> Maybe (Either Dir FileEntry)
+route r (p:ps) = let seg = splitDirectories ps in
+	case runRoute r seg of
+		Nothing -> Nothing
+		Just (Right x) -> Just (Right x)
+		Just (Left dir) -> case getSegments dir of
+			Nothing -> Nothing   -- should never happen
+			Just paths -> Just . Left $ mkDir paths
+	where
+		mkDir :: [(String, Route FileEntry)] -> Dir
+		mkDir = go (Dir [] [])
+		go d [] = d
+		go (Dir d f) ((s,r):xs) = case getLeaf r of
+			Nothing -> go (Dir (s:d) f) xs
+			Just e -> go (Dir d (e:f)) xs
+
 {-main = do
 	let ts = fromFiles ["a"] [("1", [])]
 	let r = buildBaseRoute ts
@@ -53,3 +78,4 @@ tagFileRoute ts = do
 		Nothing -> print "nothing"
 		Just _ -> print "just"
 -}
+
