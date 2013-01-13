@@ -7,10 +7,18 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.List
 import Control.Applicative
+import Control.Arrow (second)
 
 type Tag = String
 data TagSet = TagSet (Set Tag) (Map FilePath (Set Tag))
 
+-- creating
+
+emptyTagSet :: TagSet
+emptyTagSet = TagSet S.empty M.empty
+
+fromFiles :: [Tag] -> [(FilePath, [Tag])] -> TagSet
+fromFiles tags = TagSet (S.fromList tags) . M.fromList . map (second S.fromList)
 
 -- query functions
 

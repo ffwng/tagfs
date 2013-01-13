@@ -23,8 +23,9 @@ noRoute :: Route a
 noRoute = liftF NoRoute
 
 runRoute :: Route a -> [String] -> Maybe (Either (Route a) a)
-runRoute = go where
+runRoute r s = go r s where
 	go (Pure a) _ = Just (Right a)
+	go (Free NoRoute) _ = Nothing
 	go r' [] = Just $ Left r'
 	go (Free (Match s a)) (x:xs) | s == x = runRoute a xs
 	go (Free (Capture f)) (x:xs) = case f x of
