@@ -42,7 +42,7 @@ returnRight = return . Right
 
 getEntryStat :: FuseContext -> FilePath -> Entry -> IO FileStat
 getEntryStat _ basedir (RegularFile name) = realFileStat $ basedir </> name
-getEntryStat ctx _ (TagFile tags _) = return $ fileStat ctx (tagFileContentLength tags)
+getEntryStat ctx _ (TagFile tags _ _) = return $ fileStat ctx (tagFileContentLength tags)
 getEntryStat ctx _ e | isDir e = return $ dirStat ctx
 getEntryStat _ _ _ = error "getEntryStat"
 
@@ -122,7 +122,7 @@ removeDirectory _ ref (_:p) = do
 tempFile :: IO Handle
 tempFile = do
 	(path, handle) <- openTempFile "/tmp" ""
-	--removeLink path
+	removeLink path
 	return handle
 
 tagfsOpen :: FilePath -> IORef Status -> FilePath -> OpenMode -> OpenFileFlags
@@ -135,7 +135,7 @@ tagfsOpen basedir ref p mode flags = do
 			fd <- openFd (basedir </> name) mode Nothing flags
 			h <- fdToHandle fd
 			returnRight h
-		Just (TagFile t _) -> do
+		Just (TagFile t _ _) -> do
 			h <- tempFile
 			B.hPut h (tagFileContent t)
 			returnRight h
@@ -143,9 +143,40 @@ tagfsOpen basedir ref p mode flags = do
 
 tagfsRead :: FilePath -> IORef Status -> FilePath -> Handle -> ByteCount -> FileOffset
 	-> IO (Either Errno ByteString)
-tagfsRead basedir ref p h count offset = do
+tagfsRead _ _ _ h count offset = do
 	hSeek h AbsoluteSeek (toInteger offset)
 	Right <$> B.hGet h (fromInteger $ toInteger count)
+
+tagfsWrite :: FilePath -> IORef Status -> FilePath -> Handle -> ByteString -> FileOffset
+	-> IO (Either Errno ByteCount)
+tagfsWrite _ _ _ h content offset = do
+	hSeek h AbsoluteSeek (toInteger offset)
+	B.hPut h content
+	returnRight . fromInteger . toInteger $ B.length content
+
+tagfsRelease :: FilePath -> IORef Status -> FilePath -> Handle -> IO ()
+tagfsRelease _ ref p h = do
+	status <- readIORef ref
+	let r = getRoute status
+	case route r p of
+		Just (TagFile _ name _) -> do
+			hSeek h AbsoluteSeek 0
+			content <- B.hGetContents h
+			let ts = getTagSet status
+			let tsNew = setTags (parseTags content) name ts
+			let rNew = buildBaseRoute tsNew
+			writeIORef ref (Status rNew tsNew)
+		_ -> return ()
+	hClose h
+
+tagfsSetFileSize :: FilePath -> IORef Status -> FilePath -> FileOffset -> IO Errno
+tagfsSetFileSize basedir ref p size = do
+	r <- getRoute <$> readIORef ref
+	case route r p of
+		Nothing -> return eNOENT
+		Just (RegularFile name) -> setFileSize (basedir </> name) size >> return eOK
+		Just (TagFile _ _ _) -> return eOK
+		_ -> return ePERM
 
 
 -- filesystem
@@ -170,6 +201,9 @@ fsOps basedir r = defaultFuseOps
 	, fuseRemoveDirectory = removeDirectory basedir r
 	, fuseOpen = tagfsOpen basedir r
 	, fuseRead = tagfsRead basedir r
+	, fuseWrite = tagfsWrite basedir r
+	, fuseRelease = tagfsRelease basedir r
+	, fuseSetFileSize = tagfsSetFileSize basedir r
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 	

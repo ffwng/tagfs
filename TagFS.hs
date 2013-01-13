@@ -8,7 +8,7 @@ import System.FilePath
 import Data.List
 
 data Entry = RegularFile FilePath
-	| TagFile [Tag] FilePath
+	| TagFile [Tag] FilePath FilePath
 	| TagDir [Tag] [Entry] FilePath
 	| BaseDir [Entry]
 	| OtherDir [Entry] FilePath
@@ -17,7 +17,7 @@ data Entry = RegularFile FilePath
 
 getPath :: Entry -> FilePath
 getPath (RegularFile p) = p
-getPath (TagFile _ p) = p
+getPath (TagFile _ _ p) = p
 getPath (TagDir _ _ p) = p
 getPath (BaseDir _) = "/"
 getPath (OtherDir _ p) = p
@@ -71,14 +71,15 @@ tagFileExt = ".tags"
 
 tagFileRoute :: TagSet -> Route Entry
 tagFileRoute ts = do
-	name <- capture $ getName . splitExtension
+	(name, path) <- capture getName
 	let t = queryTags name ts
 	case t of
-		Just t' -> return $ TagFile t' name
+		Just t' -> return $ TagFile t' name path
 		Nothing -> noRoute
 	where
-		getName (name, ext) | ext == tagFileExt = Just name
-		getName _ = Nothing
+		getName n = case splitExtension n of
+			(name, ext) | ext == tagFileExt -> Just (name, n)
+			_ -> Nothing
 
 
 -- helper function for easier routing

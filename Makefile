@@ -7,6 +7,7 @@ MAIN_SOURCES := \
 	Route.hs    \
 	TagFS.hs    \
 	TagSet.hs   \
+	Stat.hs
 
 Main: $(MAIN_SOURCES)
 	ghc -O2 -threaded Main.hs

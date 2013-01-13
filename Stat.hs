@@ -32,6 +32,7 @@ fileStat ctx size = FileStat {
 		[ ownerReadMode
 		, groupReadMode
 		, otherReadMode
+		, ownerWriteMode
 		]
 		, statLinkCount = 1
 		, statFileOwner = fuseCtxUserID ctx
