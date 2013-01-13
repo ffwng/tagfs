@@ -23,15 +23,30 @@ import System.Fuse hiding (RegularFile)
 import System.Posix.Types
 import System.FilePath
 import Control.Arrow (second)
+import Data.ByteString.Char8 (ByteString)
+import qualified Data.ByteString.Char8 as B
+import Data.List
 
--- fuse operations
+-- helper functions
 
 returnLeft = return . Left
+
 returnRight = return . Right
 
 getEntryStat :: FuseContext -> FilePath -> FileEntry -> IO FileStat
 getEntryStat _ basedir (RegularFile name) = realFileStat $ basedir </> name
-getEntryStat ctx _ (TagFile _ _) = return $ fileStat ctx 0
+getEntryStat ctx _ (TagFile tags _) = return $ fileStat ctx (tagFileContentLength tags)
+
+tagFileContent :: [Tag] -> ByteString
+tagFileContent = B.pack . unlines
+
+tagFileContentLength :: [Tag] -> Int
+tagFileContentLength = B.length . tagFileContent
+
+parseTags :: ByteString -> [Tag]
+parseTags = lines . B.unpack
+
+-- fuse operations
 
 getFileStat :: IORef (Route FileEntry) -> FilePath -> FilePath -> IO (Either Errno FileStat)
 getFileStat ref basedir p = do
@@ -64,6 +79,8 @@ readDirectory ref basedir p = do
 
 -- files
 
+tempFile :: IO Fd
+tempFile = do
 
 
 
@@ -90,8 +107,8 @@ fsOps r basedir = defaultFuseOps
 	}
 
 main = do
-	let files = fromFiles ["a", "b", "c"]
-		[("file1", ["a"]), ("file2", []), ("file3", [])]
+	let files = fromFiles ["boo", "bar", "baz"]
+		[("file1", ["bar"]), ("file2", []), ("file3", [])]
 	let basedir = "/tmp"
 	-- ^ for testing purposes only
 	route <- newIORef (buildBaseRoute files)
