@@ -17,6 +17,7 @@ import Route
 import TagFS
 import Stat
 
+import System.IO
 import Control.Applicative
 import Data.IORef
 import System.Fuse hiding (RegularFile)
@@ -118,35 +119,57 @@ removeDirectory _ ref (_:p) = do
 
 -- files
 
-tempFile :: IO Fd
+tempFile :: IO Handle
 tempFile = do
-	(path, handle) <- mkstemps "" ""
-	removeLink path
-	handleToFd handle
+	(path, handle) <- openTempFile "/tmp" ""
+	--removeLink path
+	return handle
 
+tagfsOpen :: FilePath -> IORef Status -> FilePath -> OpenMode -> OpenFileFlags
+	-> IO (Either Errno Handle)
+tagfsOpen basedir ref p mode flags = do
+	r <- getRoute <$> readIORef ref
+	case route r p of
+		Nothing -> returnLeft eNOENT
+		Just (RegularFile name) -> do
+			fd <- openFd (basedir </> name) mode Nothing flags
+			h <- fdToHandle fd
+			returnRight h
+		Just (TagFile t _) -> do
+			h <- tempFile
+			B.hPut h (tagFileContent t)
+			returnRight h
+		_ -> returnLeft ePERM
+
+tagfsRead :: FilePath -> IORef Status -> FilePath -> Handle -> ByteCount -> FileOffset
+	-> IO (Either Errno ByteString)
+tagfsRead basedir ref p h count offset = do
+	hSeek h AbsoluteSeek (toInteger offset)
+	Right <$> B.hGet h (fromInteger $ toInteger count)
 
 
 -- filesystem
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
 getFileSystemStats str =  returnRight FileSystemStats
-    { fsStatBlockSize = 512
-    , fsStatBlockCount = 1
-    , fsStatBlocksFree = 1
-    , fsStatBlocksAvailable = 1
-    , fsStatFileCount = 5 -- IS THIS CORRECT?
-    , fsStatFilesFree = 10 -- WHAT IS THIS?
-    , fsStatMaxNameLength = 255 -- SEEMS SMALL?
-    }
+	{ fsStatBlockSize = 510
+	, fsStatBlockCount = 1
+	, fsStatBlocksFree = 1
+	, fsStatBlocksAvailable = 1
+	, fsStatFileCount = 5 -- IS THIS CORRECT?
+	, fsStatFilesFree = 10 -- WHAT IS THIS?
+	, fsStatMaxNameLength = 255 -- SEEMS SMALL?
+	}
 
-
-fsOps :: FilePath -> IORef Status -> FuseOperations Fd
+fsOps :: FilePath -> IORef Status -> FuseOperations Handle
 fsOps basedir r = defaultFuseOps
 	{ fuseGetFileStat = getFileStat basedir r
 	, fuseOpenDirectory = openDirectory basedir r
 	, fuseReadDirectory = readDirectory basedir r
 	, fuseCreateDirectory = createDirectory basedir r
 	, fuseRemoveDirectory = removeDirectory basedir r
+	, fuseOpen = tagfsOpen basedir r
+	, fuseRead = tagfsRead basedir r
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 	
