@@ -22,14 +22,14 @@ tagFile :: [Tag] -> FilePath -> Route FileEntry
 tagFile t = toRoute $ TagFile t
 
 buildBaseRoute :: TagSet -> Route FileEntry
-buildBaseRoute = buildRoute
+buildBaseRoute = buildSubRoute []
 
-buildRoute :: TagSet -> Route FileEntry
-buildRoute ts = choice [tagDirRoute ts, fileRoute ts, tagFileRoute ts]
+buildSubRoute :: [Tag] -> TagSet -> Route FileEntry
+buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
 
-tagDirRoute :: TagSet -> Route FileEntry
-tagDirRoute ts = choice $ map get (tags ts) where
-	get tag = match tag >> buildRoute (query tag ts)
+tagDirRoute :: [Tag] -> TagSet -> Route FileEntry
+tagDirRoute visited ts = choice . map get $ filter (`notElem` visited) (tags ts) where
+	get tag = match tag >> buildSubRoute (tag:visited) (query tag ts)
 
 fileRoute :: TagSet -> Route FileEntry
 fileRoute ts = choice $ map get (files ts) where
