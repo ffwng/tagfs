@@ -42,9 +42,8 @@ returnRight = return . Right
 getEntryStat :: FuseContext -> FilePath -> Entry -> IO FileStat
 getEntryStat _ basedir (RegularFile name) = realFileStat $ basedir </> name
 getEntryStat ctx _ (TagFile tags _) = return $ fileStat ctx (tagFileContentLength tags)
-getEntryStat ctx _ (TagDir _ _ _) = return $ dirStat ctx
-getEntryStat ctx _ (OtherDir _ _) = return $ dirStat ctx
-getEntryStat ctx _ (DirName _) = return $ dirStat ctx
+getEntryStat ctx _ e | isDir e = return $ dirStat ctx
+getEntryStat _ _ _ = error "getEntryStat"
 
 tagFileContent :: [Tag] -> ByteString
 tagFileContent = B.pack . unlines

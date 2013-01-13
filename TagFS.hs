@@ -10,6 +10,7 @@ import Data.List
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath
 	| TagDir [Tag] [Entry] FilePath
+	| BaseDir [Entry]
 	| OtherDir [Entry] FilePath
 	| DirName FilePath
 	deriving Show
@@ -18,13 +19,22 @@ getPath :: Entry -> FilePath
 getPath (RegularFile p) = p
 getPath (TagFile _ p) = p
 getPath (TagDir _ _ p) = p
+getPath (BaseDir _) = "/"
 getPath (OtherDir _ p) = p
 getPath (DirName p) = p
 
 getDirEntries :: Entry -> Maybe [Entry]
 getDirEntries (TagDir _ e _) = Just e
+getDirEntries (BaseDir e) = Just e
 getDirEntries (OtherDir e _) = Just e
 getDirEntries _ = Nothing
+
+isDir :: Entry -> Bool
+isDir (TagDir _ _ _) = True
+isDir (BaseDir _) = True
+isDir (OtherDir _ _) = True
+isDir (DirName _) = True
+isDir _ = False
 
 toRoute :: (FilePath -> Entry) -> FilePath -> Route Entry
 toRoute f name = match name >> return (f name)
@@ -39,7 +49,7 @@ tagDirEntries t ts = tagdirs ++ regfiles where
 
 buildBaseRoute :: TagSet -> Route Entry
 buildBaseRoute ts = choice [basedir, buildSubRoute [] ts] where
-	basedir = eor >> return (OtherDir (tagDirEntries [] ts) "/")
+	basedir = eor >> return (BaseDir (tagDirEntries [] ts))
 
 buildSubRoute :: [Tag] -> TagSet -> Route Entry
 buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
