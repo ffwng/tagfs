@@ -117,11 +117,11 @@ createDirectory ref (_:p) _ = do
 			return eOK
 
 removeDirectory :: IORef Status -> FilePath -> IO Errno
-removeDirectory ref p'@(_:p) = do
+removeDirectory ref (_:p) = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
-	case route r p' of   -- todo
+	case runRoute r seg of   -- todo
 		Nothing -> return eNOENT
 		Just (TagDir _) -> do
 			let name = last seg
