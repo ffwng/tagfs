@@ -8,10 +8,12 @@ import System.FilePath
 import Data.List
 import Control.Applicative
 import Data.Maybe
+import Data.Function (on)
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
-	| TagDir [Tag]
+	| TagDir Tag
+	| ExtendedBaseDir String
 	| Dir
 	| DirName FilePath
 	deriving Show
@@ -24,6 +26,7 @@ getPath _ = Nothing
 
 isDir :: Entry -> Bool
 isDir (TagDir _) = True
+isDir (ExtendedBaseDir _) = True
 isDir Dir = True
 isDir (DirName _) = True
 isDir _ = False
@@ -38,16 +41,31 @@ dir :: Entry -> Route Entry -> Route Entry
 dir e r = choice [eor >> return e, r]
 
 buildBaseRoute :: TagSet -> Route Entry
-buildBaseRoute = buildSubRoute []
+buildBaseRoute ts = buildSubRoute [] ts
 
 buildSubRoute :: [Tag] -> TagSet -> Route Entry
 buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
 
 tagDirRoute :: [Tag] -> TagSet -> Route Entry
-tagDirRoute visited ts = dir (TagDir visited) tagsroute where
-	tagsroute = --match "tags" >>
-		choice (map tagroute . filter (`notElem` visited) $ (tags ts))
-	tagroute tag = match tag >> buildSubRoute (tag:visited) (query tag ts)
+tagDirRoute visited ts = tagsroute where
+	mytags = filter (`notElem` visited) (tags ts)
+	tagsroute = let (s, e) = splitTags mytags in
+		choice $ map simpleroute s ++ map extendedroute e
+	simpleroute tag = do
+		match (getValue tag)
+		dir (TagDir tag) $ subroute tag
+	extendedroute (name, tags) = do
+		match name
+		dir (ExtendedBaseDir name) $ do
+			choice $ map (simpleroute) tags
+	subroute tag = buildSubRoute (tag:visited) (query tag ts)
+
+splitTags :: [Tag] -> ([Tag], [(String, [Tag])])
+splitTags = go ([], []) . groupBy ((==) `on` getName) where
+	go (s, e) [] = (s, e)
+	go (s, e) (s':xs) = case s' of
+		Simple _:_ -> go (s' ++ s, e) xs
+		Extended n _:_ -> go (s, (n, s'):e) xs
 
 fileRoute :: TagSet -> Route Entry
 fileRoute ts = choice $ map get (files ts) where

@@ -60,16 +60,17 @@ getEntryStat :: Status -> FuseContext -> Entry -> IO FileStat
 getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
 getEntryStat _ ctx (TagFile tags _ _) = return $ fileStat ctx (tagFileContentLength tags)
 getEntryStat _ ctx e | isDir e = return $ dirStat ctx
-getEntryStat _ _ _ = error "getEntryStat"
+getEntryStat _ _ _ = error "getEntryStat: assertion failed"
 
+-- TODO
 tagFileContent :: [Tag] -> ByteString
-tagFileContent = B.pack . unlines
+tagFileContent = B.pack . unlines . map getName
 
 tagFileContentLength :: [Tag] -> Int
 tagFileContentLength = B.length . tagFileContent
 
 parseTags :: ByteString -> [Tag]
-parseTags = lines . B.unpack
+parseTags = map Simple . lines . B.unpack
 
 -- fuse operations
 
@@ -109,7 +110,7 @@ createDirectory ref (_:p) _ = do
 	else do
 		let name = last seg
 		let ts = getTagSet status
-		let tsNew = createTag name ts
+		let tsNew = createTag (Simple name) ts
 		writeIORef ref (updateStatus status tsNew)
 		return eOK
 
@@ -123,7 +124,7 @@ removeDirectory ref (_:p) = do
 		Just (TagDir _) -> do
 			let name = last seg
 			let ts = getTagSet status
-			let tsNew = wipeTag name ts
+			let tsNew = wipeTag (Simple name) ts
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
 		Just x | isDir x -> return ePERM
@@ -225,8 +226,8 @@ fsOps r = defaultFuseOps
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 	
-ts = fromFiles ["boo", "bar", "baz"]
-	[("file1", ["bar"]), ("file2", []), ("file3", [])]
+ts = fromFiles [Simple "bar", Extended "loc" "hier", Extended "loc" "da"]
+	[("file1", [Simple "bar"]), ("file2", [Extended "loc" "hier"]), ("file3", [])]
 mapping = M.fromList [("file1", "/tmp/file1"), ("file2", "/tmp/file2"),
 	("file3", "/tmp/file3")]
 -- ^ for testing purposes only

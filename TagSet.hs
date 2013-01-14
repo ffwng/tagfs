@@ -9,10 +9,16 @@ import Data.List
 import Control.Applicative
 import Control.Arrow (second)
 
-type Tag = String
+data Tag = Simple String | Extended String String deriving (Eq, Ord, Show)
 data TagSet = TagSet (Set Tag) (Map FilePath (Set Tag))
 
--- creating
+getName :: Tag -> String
+getName (Simple n) = n
+getName (Extended n _) = n
+
+getValue :: Tag -> String
+getValue (Simple v) = v
+getValue (Extended _ v) = v
 
 emptyTagSet :: TagSet
 emptyTagSet = TagSet S.empty M.empty
