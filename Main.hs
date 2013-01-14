@@ -79,8 +79,8 @@ getFileStat ref p = do
 	status <- readIORef ref
 	let r = getRoute status
 	case route r p of
-		Nothing -> returnLeft eNOENT
-		Just e -> Right <$> getEntryStat status ctx e
+		Just (Right e) -> Right <$> getEntryStat status ctx e
+		_ -> returnLeft eNOENT
 
 -- directories
 
@@ -97,12 +97,11 @@ readDirectory ref p = do
 	let r = getRoute status
 	case route r p of
 		Nothing -> returnLeft eNOENT
-		Just dir -> case getDirEntries dir of
-			Nothing -> returnLeft eNOTDIR
-			Just entries -> do
-				stats <- zip (catMaybes $ map getPath entries)
+		Just (Right _) -> returnLeft eNOTDIR
+		Just (Left entries) -> do
+			stats <- zip (catMaybes $ map getPath entries)
 					<$> mapM (getEntryStat status ctx) entries
-				returnRight $ defaultStats ctx ++ stats
+			returnRight $ defaultStats ctx ++ stats
 
 createDirectory :: IORef Status -> FilePath -> FileMode -> IO Errno
 createDirectory ref (_:p) _ = do
@@ -119,13 +118,13 @@ createDirectory ref (_:p) _ = do
 			return eOK
 
 removeDirectory :: IORef Status -> FilePath -> IO Errno
-removeDirectory ref (_:p) = do
+removeDirectory ref p'@(_:p) = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
-	case runRoute r seg of
+	case route r p' of   -- todo
 		Nothing -> return eNOENT
-		Just (TagDir _ _ ) -> do
+		Just (Right (TagDir _)) -> do
 			let name = last seg
 			let ts = getTagSet status
 			let tsNew = wipeTag name ts
@@ -153,10 +152,10 @@ tagfsOpen ref p mode flags = do
 	let r = getRoute status
 	case route r p of
 		Nothing -> returnLeft eNOENT
-		Just (RegularFile name) -> do
+		Just (Right (RegularFile name)) -> do
 			h <- openFile (getRealPath status name) (toIOMode mode flags)
 			returnRight h
-		Just (TagFile t _ _) -> do
+		Just (Right (TagFile t _ _)) -> do
 			h <- tempFile
 			B.hPut h (tagFileContent t)
 			returnRight h
@@ -180,7 +179,7 @@ tagfsRelease ref p h = do
 	status <- readIORef ref
 	let r = getRoute status
 	case route r p of
-		Just (TagFile _ name _) -> do
+		Just (Right (TagFile _ name _)) -> do
 			hSeek h AbsoluteSeek 0
 			content <- B.hGetContents h
 			let ts = getTagSet status
@@ -195,8 +194,9 @@ tagfsSetFileSize ref p size = do
 	let r = getRoute status
 	case route r p of
 		Nothing -> return eNOENT
-		Just (RegularFile name) -> setFileSize (getRealPath status name) size >> return eOK
-		Just (TagFile _ _ _) -> return eOK
+		Just (Right (RegularFile name))
+			-> setFileSize (getRealPath status name) size >> return eOK
+		Just (Right (TagFile _ _ _)) -> return eOK
 		_ -> return ePERM
 
 
