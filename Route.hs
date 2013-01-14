@@ -23,6 +23,9 @@ match a = liftF (Match a ())
 capture :: (String -> Maybe a) -> Route a
 capture = liftF . Capture
 
+captureBool :: (String -> Bool) -> Route String
+captureBool f = capture (\a -> if f a then Just a else Nothing)
+
 choice :: [Route a] -> Route a
 choice = join . liftF . Choice
 
