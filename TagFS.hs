@@ -70,8 +70,6 @@ tagFileRoute ts = do
 
 -- helper function for easier routing
 
---data Dir = Dir [FilePath] [Entry]
-
 route :: Route Entry -> FilePath -> Maybe Entry
 route r (p:ps) = let seg = splitDirectories ps in route' r seg
 
@@ -91,13 +89,4 @@ routeDir' r seg = case getRestSegments r seg of
 	where
 		entry (_, Just a) = a
 		entry (s, Nothing) = DirName s
-
-{-main = do
-	let ts = fromFiles ["a"] [("1", [])]
-	let r = buildBaseRoute ts
-	let res = runRoute r ["1.tags", "1.tags"]
-	case res of
-		Nothing -> print "nothing"
-		Just _ -> print "just"
--}
 
