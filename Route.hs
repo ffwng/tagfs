@@ -53,9 +53,7 @@ routeToEnd :: Route a -> [String] -> Maybe (Route a)
 routeToEnd = go where
 	go a [] = Just a
 	go (Free (Match s a)) (x:xs) | s == x = routeToEnd a xs
-	go (Free (Capture f)) (x:xs) = case f x of
-		Nothing -> Nothing
-		Just a -> routeToEnd a xs
+	go (Free (Capture f)) (x:xs) = f x >>= flip routeToEnd xs
 	go (Free (Choice as)) xs = msum $ map (`routeToEnd` xs) as
 	go _ _ = Nothing
 

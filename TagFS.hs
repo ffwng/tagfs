@@ -7,6 +7,7 @@ import System.IO
 import System.FilePath
 import Data.List
 import Control.Applicative
+import Data.Maybe
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
@@ -59,9 +60,7 @@ tagFileRoute :: TagSet -> Route Entry
 tagFileRoute ts = do
 	(name, path) <- capture getName
 	let t = queryTags name ts
-	case t of
-		Just t' -> return $ TagFile t' name path
-		Nothing -> noRoute
+	maybe noRoute (\t' -> return $ TagFile t' name path) t
 	where
 		getName n = case splitExtension n of
 			(name, ext) | ext == tagFileExt -> Just (name, n)
@@ -74,19 +73,13 @@ route :: Route Entry -> FilePath -> Maybe Entry
 route r (p:ps) = let seg = splitDirectories ps in route' r seg
 
 route' :: Route Entry -> [FilePath] -> Maybe Entry
-route' r seg = case runRoute r seg of
-	Nothing -> Nothing
-	Just Nothing -> Just Dir  -- non pure values are directories
-	Just a -> a
+route' r seg = fromMaybe Dir <$> runRoute r seg
 
 routeDir :: Route Entry -> FilePath -> Maybe (Maybe [Entry])
 routeDir r (p:ps) = let seg = splitDirectories ps in routeDir' r seg
 
 routeDir' :: Route Entry -> [FilePath] -> Maybe (Maybe [Entry])
-routeDir' r seg = case getRestSegments r seg of
-	Nothing -> Nothing
-	Just entries -> Just $ (map entry <$> entries)
-	where
-		entry (_, Just a) = a
-		entry (s, Nothing) = DirName s
+routeDir' r seg = fmap (fmap (map entry)) $ getRestSegments r seg where
+	entry (_, Just a) = a
+	entry (s, Nothing) = DirName s
 

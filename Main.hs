@@ -78,9 +78,7 @@ getFileStat ref p = do
 	ctx <- getFuseContext
 	status <- readIORef ref
 	let r = getRoute status
-	case route r p of
-		Just e -> Right <$> getEntryStat status ctx e
-		_ -> returnLeft eNOENT
+	maybe (returnLeft eNOENT) (\e -> Right <$> getEntryStat status ctx e) $ route r p
 
 -- directories
 
@@ -95,34 +93,32 @@ readDirectory ref p = do
 	ctx <- getFuseContext
 	status <- readIORef ref
 	let r = getRoute status
-	case routeDir r p of
-		Nothing -> returnLeft eNOENT
-		Just Nothing -> returnLeft eNOTDIR
-		Just (Just entries) -> do
-			stats <- zip (catMaybes $ map getPath entries)
-					<$> mapM (getEntryStat status ctx) entries
-			returnRight $ defaultStats ctx ++ stats
+	let buildEntries entries = do
+		stats <- zip (catMaybes $ map getPath entries)
+			<$> mapM (getEntryStat status ctx) entries
+		returnRight $ defaultStats ctx ++ stats
+	maybe (returnLeft eNOENT) (maybe (returnLeft eNOTDIR) buildEntries) $ routeDir r p
 
 createDirectory :: IORef Status -> FilePath -> FileMode -> IO Errno
 createDirectory ref (_:p) _ = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
-	case route' r seg of
-		Just _ -> return eEXIST
-		_ -> do
-			let name = last seg
-			let ts = getTagSet status
-			let tsNew = createTag name ts
-			writeIORef ref (updateStatus status tsNew)
-			return eOK
+	if isJust $ route' r seg
+	then return eEXIST
+	else do
+		let name = last seg
+		let ts = getTagSet status
+		let tsNew = createTag name ts
+		writeIORef ref (updateStatus status tsNew)
+		return eOK
 
 removeDirectory :: IORef Status -> FilePath -> IO Errno
 removeDirectory ref (_:p) = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
-	case route' r seg of   -- todo
+	case route' r seg of
 		Nothing -> return eNOENT
 		Just (TagDir _) -> do
 			let name = last seg
