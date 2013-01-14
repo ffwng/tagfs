@@ -39,7 +39,7 @@ noRoute = liftF NoRoute
 -- Just Nothing -> route succeeded, but had not finished
 -- Just (Just x) -> route had finished with x
 runRoute :: Route a -> [String] -> Maybe (Maybe a)
-runRoute r s = getPure <$> routeToEnd r s
+runRoute r s = getPureOrEOR <$> routeToEnd r s
 
 -- Nothing -> route failed
 -- Just Nothing -> route succeeded, but leaved no rest segments
@@ -59,20 +59,19 @@ routeToEnd r s = go r s where
 	go (Free (Choice as)) xs = msum $ map (`routeToEnd` xs) as
 	go _ _ = Nothing
 
+getPureOrEOR :: Route a -> Maybe a
+getPureOrEOR (Pure a) = Just a
+getPureOrEOR (Free (EOR a)) = getPureOrEOR a
+getPureOrEOR (Free (Choice as)) = msum $ map getPureOrEOR as
+getPureOrEOR _ = Nothing
 
 getPure :: Route a -> Maybe a
 getPure (Pure a) = Just a
-getPure (Free (EOR a)) = getPure a
 getPure (Free (Choice as)) = msum $ map getPure as
 getPure _ = Nothing
 
-getPureWithoutEOR :: Route a -> Maybe a
-getPureWithoutEOR (Pure a) = Just a
-getPureWithoutEOR (Free (Choice as)) = msum $ map getPureWithoutEOR as
-getPureWithoutEOR _ = Nothing
-
 findEntries :: Route a -> Maybe [(String, Maybe a)]
-findEntries (Free (Match s a)) = Just [(s, getPureWithoutEOR a)]
+findEntries (Free (Match s a)) = Just [(s, getPure a)]
 findEntries (Free (Choice a)) = Just . concat . catMaybes $ map findEntries a
 findEntries _ = Nothing
 
