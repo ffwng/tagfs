@@ -32,9 +32,17 @@ eor = liftF (EOR ())
 noRoute :: Route a
 noRoute = liftF NoRoute
 
+-- Nothing -> route failed
+-- Just Nothing -> route succeeded, but had not finished
+-- Just (Just x) -> route had finished with x
 runRoute :: Route a -> [String] -> Maybe (Maybe a)
 runRoute r s = getPure <$> routeToEnd r s
 
+-- Nothing -> route failed
+-- Just Nothing -> route succeeded, but leaved no rest segments
+-- Just (Just e) -> route succeeded and leaved rest segments e
+-- Note: a route may both finish and leave rest segments
+-- (consider choice [eor >> return "finished", match "name" >> return "restsegment"]
 getRestSegments :: Route a -> [String] -> Maybe (Maybe [(FilePath, Maybe a)])
 getRestSegments r s = findEntries <$> routeToEnd r s
 
