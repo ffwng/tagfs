@@ -62,15 +62,26 @@ getEntryStat _ ctx (TagFile tags _ _) = return $ fileStat ctx (tagFileContentLen
 getEntryStat _ ctx e | isDir e = return $ dirStat ctx
 getEntryStat _ _ _ = error "getEntryStat: assertion failed"
 
--- TODO
+parseTag :: String -> Maybe Tag
+parseTag s = case span (/= tagSep) s of
+	(n, []) | notNull n -> Just (Simple n)
+	(n, tagSep:v) | notNull n && notNull v -> Just (Extended n v)
+	_ -> Nothing
+	where
+		notNull = not . null
+
+formatTag :: Tag -> String
+formatTag (Simple n) = n
+formatTag (Extended n v) = n ++ tagSep:v
+
 tagFileContent :: [Tag] -> ByteString
-tagFileContent = B.pack . unlines . map getName
+tagFileContent = B.pack . unlines . map formatTag
 
 tagFileContentLength :: [Tag] -> Int
 tagFileContentLength = B.length . tagFileContent
 
 parseTags :: ByteString -> [Tag]
-parseTags = map Simple . lines . B.unpack
+parseTags = catMaybes . map parseTag . lines . B.unpack
 
 -- fuse operations
 
@@ -100,31 +111,46 @@ readDirectory ref p = do
 		returnRight $ defaultStats ctx ++ stats
 	maybe (returnLeft eNOENT) (maybe (returnLeft eNOTDIR) buildEntries) $ routeDir r p
 
+softInit :: [a] -> [a]
+softInit [] = []
+softInit x = init x
+
 createDirectory :: IORef Status -> FilePath -> FileMode -> IO Errno
-createDirectory ref (_:p) _ = do
-	let seg = splitDirectories p
+createDirectory ref p _ = do
+	let seg = split' p
+	let tag = parseTag (last seg)
 	status <- readIORef ref
 	let r = getRoute status
 	if isJust $ route' r seg
 	then return eEXIST
-	else do
-		let name = last seg
-		let ts = getTagSet status
-		let tsNew = createTag (Simple name) ts
-		writeIORef ref (updateStatus status tsNew)
-		return eOK
+	else case (,) <$> tag <*> route' r (softInit seg) of
+		Just (Simple v, ExtendedBaseDir name) -> newTag (Extended name v) status ref
+		Just (_, ExtendedBaseDir _) -> return ePERM
+		Just (tag', x) | isDir x -> newTag tag' status ref
+		_ -> return eINVAL
+	where
+		newTag tag status ref = do
+			let ts = getTagSet status
+			let tsNew = createTag tag ts
+			writeIORef ref (updateStatus status tsNew)
+			return eOK
 
 removeDirectory :: IORef Status -> FilePath -> IO Errno
-removeDirectory ref (_:p) = do
-	let seg = splitDirectories p
+removeDirectory ref p = do
+	let seg = split p
 	status <- readIORef ref
 	let r = getRoute status
+	let ts = getTagSet status
 	case route' r seg of
 		Nothing -> return eNOENT
-		Just (TagDir _) -> do
+		Just (TagDir t) -> do
 			let name = last seg
-			let ts = getTagSet status
-			let tsNew = wipeTag (Simple name) ts
+			let tsNew = wipeTag t ts
+			writeIORef ref (updateStatus status tsNew)
+			return eOK
+		Just (ExtendedBaseDir name) -> do
+			let tags' = filter ((== name) . getName) (tags ts)
+			let tsNew = foldr wipeTag ts tags'
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
 		Just x | isDir x -> return ePERM

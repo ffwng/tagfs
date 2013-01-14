@@ -87,14 +87,26 @@ tagFileRoute ts = do
 
 -- helper function for easier routing
 
+tagSep :: Char
+tagSep = ':'
+
+-- todo: handle ':'-handling in tagDirRoute
+split :: FilePath -> [String]
+split p = split' (map f p) where
+	f x | x == tagSep = pathSeparator
+	f x = x
+
+split' :: FilePath -> [String]
+split' (p:ps) = splitDirectories ps
+
 route :: Route Entry -> FilePath -> Maybe Entry
-route r (p:ps) = let seg = splitDirectories ps in route' r seg
+route r p = let seg = split p in route' r seg where
 
 route' :: Route Entry -> [FilePath] -> Maybe Entry
 route' r seg = fromMaybe Dir <$> runRoute r seg
 
 routeDir :: Route Entry -> FilePath -> Maybe (Maybe [Entry])
-routeDir r (p:ps) = let seg = splitDirectories ps in routeDir' r seg
+routeDir r p = let seg = split p in routeDir' r seg
 
 routeDir' :: Route Entry -> [FilePath] -> Maybe (Maybe [Entry])
 routeDir' r seg = fmap (fmap (map entry)) $ getRestSegments r seg where
