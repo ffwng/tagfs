@@ -6,6 +6,7 @@ import TagSet
 import System.IO
 import System.FilePath
 import Data.List
+import Control.Applicative
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
@@ -44,7 +45,7 @@ buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFile
 tagDirRoute :: [Tag] -> TagSet -> Route Entry
 tagDirRoute visited ts = dir (TagDir visited) tagsroute where
 	tagsroute = --match "tags" >>
-		dir Dir (choice (map tagroute . filter (`notElem` visited) $ (tags ts)))
+		choice (map tagroute . filter (`notElem` visited) $ (tags ts))
 	tagroute tag = match tag >> buildSubRoute (tag:visited) (query tag ts)
 
 fileRoute :: TagSet -> Route Entry
@@ -74,12 +75,13 @@ tagFileRoute ts = do
 route :: Route Entry -> FilePath -> Maybe Entry
 route r (p:ps) = let seg = splitDirectories ps in case runRoute r seg of
 	Nothing -> Nothing
-	a -> a
+	Just Nothing -> Just Dir  -- non pure values are directories
+	Just a -> a
 
-routeDir :: Route Entry -> FilePath -> Maybe [Entry]
+routeDir :: Route Entry -> FilePath -> Maybe (Maybe [Entry])
 routeDir r (p:ps) = let seg = splitDirectories ps in case getRestSegments r seg of
 	Nothing -> Nothing
-	Just entries -> Just $ map entry entries
+	Just entries -> Just $ (map entry <$> entries)
 	where
 		entry (_, Just a) = a
 		entry (s, Nothing) = DirName s

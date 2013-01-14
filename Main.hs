@@ -97,7 +97,8 @@ readDirectory ref p = do
 	let r = getRoute status
 	case routeDir r p of
 		Nothing -> returnLeft eNOENT
-		Just entries -> do
+		Just Nothing -> returnLeft eNOTDIR
+		Just (Just entries) -> do
 			stats <- zip (catMaybes $ map getPath entries)
 					<$> mapM (getEntryStat status ctx) entries
 			returnRight $ defaultStats ctx ++ stats
@@ -123,13 +124,13 @@ removeDirectory ref (_:p) = do
 	let r = getRoute status
 	case runRoute r seg of   -- todo
 		Nothing -> return eNOENT
-		Just (TagDir _) -> do
+		Just (Just (TagDir _)) -> do
 			let name = last seg
 			let ts = getTagSet status
 			let tsNew = wipeTag name ts
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
-		Just x | isDir x -> return ePERM
+		Just (Just x) | isDir x -> return ePERM
 		_ -> return eNOTDIR
 
 -- files

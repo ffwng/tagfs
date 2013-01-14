@@ -32,10 +32,10 @@ eor = liftF (EOR ())
 noRoute :: Route a
 noRoute = liftF NoRoute
 
-runRoute :: Route a -> [String] -> Maybe a
-runRoute r s = routeToEnd r s >>= getPure
+runRoute :: Route a -> [String] -> Maybe (Maybe a)
+runRoute r s = getPure <$> routeToEnd r s
 
-getRestSegments :: Route a -> [String] -> Maybe [(FilePath, Maybe a)]
+getRestSegments :: Route a -> [String] -> Maybe (Maybe [(FilePath, Maybe a)])
 getRestSegments r s = findEntries <$> routeToEnd r s
 
 routeToEnd :: Route a -> [String] -> Maybe (Route a)
@@ -60,10 +60,10 @@ getPureWithoutEOR (Pure a) = Just a
 getPureWithoutEOR (Free (Choice as)) = msum $ map getPureWithoutEOR as
 getPureWithoutEOR _ = Nothing
 
-findEntries :: Route a -> [(String, Maybe a)]
-findEntries (Free (Match s a)) = [(s, getPureWithoutEOR a)]
-findEntries (Free (Choice a)) = concatMap findEntries a
-findEntries _ = []
+findEntries :: Route a -> Maybe [(String, Maybe a)]
+findEntries (Free (Match s a)) = Just [(s, getPureWithoutEOR a)]
+findEntries (Free (Choice a)) = Just . concat . catMaybes $ map findEntries a
+findEntries _ = Nothing
 
 prettyRoute :: (Show a) => Route a -> Doc
 prettyRoute (Pure a) = text "return" <+> text (show a)
