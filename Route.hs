@@ -50,7 +50,7 @@ getRestSegments :: Route a -> [String] -> Maybe (Maybe [(FilePath, Maybe a)])
 getRestSegments r s = findEntries <$> routeToEnd r s
 
 routeToEnd :: Route a -> [String] -> Maybe (Route a)
-routeToEnd r s = go r s where
+routeToEnd = go where
 	go a [] = Just a
 	go (Free (Match s a)) (x:xs) | s == x = routeToEnd a xs
 	go (Free (Capture f)) (x:xs) = case f x of
@@ -60,15 +60,19 @@ routeToEnd r s = go r s where
 	go _ _ = Nothing
 
 getPureOrEOR :: Route a -> Maybe a
-getPureOrEOR (Pure a) = Just a
-getPureOrEOR (Free (EOR a)) = getPureOrEOR a
-getPureOrEOR (Free (Choice as)) = msum $ map getPureOrEOR as
-getPureOrEOR _ = Nothing
+getPureOrEOR = go where
+	go = getPureHelper findEOR
+	findEOR (Free (EOR a)) = go a
+	findEOR _ = Nothing
 
 getPure :: Route a -> Maybe a
-getPure (Pure a) = Just a
-getPure (Free (Choice as)) = msum $ map getPure as
-getPure _ = Nothing
+getPure = getPureHelper (const Nothing)
+
+getPureHelper :: (Route a -> Maybe a) -> Route a -> Maybe a
+getPureHelper f = go where
+	go (Pure a) = Just a
+	go (Free (Choice as)) = msum $ map go as
+	go r = f r
 
 findEntries :: Route a -> Maybe [(String, Maybe a)]
 findEntries (Free (Match s a)) = Just [(s, getPure a)]
