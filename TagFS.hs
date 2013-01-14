@@ -9,26 +9,28 @@ import Data.List
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
-	| TagDir [Tag] [Entry] FilePath
+	| TagDir [Tag] [Entry]
 	| BaseDir [Entry]
+	| OtherDir [Entry]
 	| DirName FilePath
 	deriving Show
 
-getPath :: Entry -> FilePath
-getPath (RegularFile p) = p
-getPath (TagFile _ _ p) = p
-getPath (TagDir _ _ p) = p
-getPath (BaseDir _) = "/"
-getPath (DirName p) = p
+getPath :: Entry -> Maybe FilePath
+getPath (RegularFile p) = Just p
+getPath (TagFile _ _ p) = Just p
+getPath (DirName p) = Just p
+getPath _ = Nothing
 
 getDirEntries :: Entry -> Maybe [Entry]
-getDirEntries (TagDir _ e _) = Just e
+getDirEntries (TagDir _ e ) = Just e
 getDirEntries (BaseDir e) = Just e
+getDirEntries (OtherDir e ) = Just e
 getDirEntries _ = Nothing
 
 isDir :: Entry -> Bool
-isDir (TagDir _ _ _) = True
+isDir (TagDir _ _ ) = True
 isDir (BaseDir _) = True
+isDir (OtherDir _ ) = True
 isDir (DirName _) = True
 isDir _ = False
 
@@ -38,25 +40,26 @@ toRoute f name = match name >> return (f name)
 regularFile :: FilePath -> Route Entry
 regularFile = toRoute RegularFile
 
-tagDirEntries :: [Tag] -> TagSet -> [Entry]
-tagDirEntries t ts = tagdirs ++ regfiles where
-		tagdirs = map DirName (tags ts \\ t)
-		regfiles = map RegularFile (files ts)
+buildDir :: ([Entry] -> Entry) -> [(FilePath, Route Entry)] -> [(FilePath, Entry)]
+	-> Route Entry
+buildDir f dirs files = choice [makedir, makeroutes] where
+	makedir = eor >> return (f $ map (DirName . fst) dirs ++ map snd files)
+	makeroutes = choice $ map (\(x,r) -> match x >> r) dirs
+		++ map (\(x,r) -> match x >> return r) files
 
 buildBaseRoute :: TagSet -> Route Entry
-buildBaseRoute ts = choice [basedir, buildSubRoute [] ts] where
-	basedir = eor >> return (BaseDir (tagDirEntries [] ts))
+buildBaseRoute = tagDirRoute []
 
 buildSubRoute :: [Tag] -> TagSet -> Route Entry
 buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
 
 tagDirRoute :: [Tag] -> TagSet -> Route Entry
-tagDirRoute visited ts = choice . map get $ filter (`notElem` visited) (tags ts) where
-	get tag = match tag >> choice [dir, content] where
-		queried = query tag ts
-		visited' = tag:visited
-		dir = eor >> return (TagDir visited' (tagDirEntries visited' queried) tag)
-		content = buildSubRoute (tag:visited) queried
+tagDirRoute visited ts = buildDir (TagDir visited)
+	[("tags", tagsroute)] filesroute where
+	tagsroute = buildDir OtherDir (map tagroute . filter
+		(`notElem` visited) $ (tags ts)) []
+	tagroute tag = (tag, buildSubRoute (tag:visited) (query tag ts))
+	filesroute = map (\n -> (n, RegularFile n)) (files ts)
 
 fileRoute :: TagSet -> Route Entry
 fileRoute ts = choice $ map get (files ts) where
