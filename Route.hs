@@ -32,25 +32,36 @@ eor = liftF (EOR ())
 noRoute :: Route a
 noRoute = liftF NoRoute
 
-runRoute :: Route a -> [String] -> Maybe (Either [(String, Maybe a)] a)
-runRoute r s = go r s where
-	go (Pure a) _ = Just $ Right a
-	go (Free (EOR a)) [] = runRoute a []
-	go a [] = Just . Left $ findEntries a
-	go (Free (Match s a)) (x:xs) | s == x = runRoute a xs
+runRoute :: Route a -> [String] -> Maybe a
+runRoute r s = routeToEnd r s >>= getPure
+
+getRestSegments :: Route a -> [String] -> Maybe [(FilePath, Maybe a)]
+getRestSegments r s = findEntries <$> routeToEnd r s
+
+routeToEnd :: Route a -> [String] -> Maybe (Route a)
+routeToEnd r s = go r s where
+	go a [] = Just a
+	go (Free (Match s a)) (x:xs) | s == x = routeToEnd a xs
 	go (Free (Capture f)) (x:xs) = case f x of
 		Nothing -> Nothing
-		Just a -> runRoute a xs
-	go (Free (Choice as)) xs = msum $ map (`runRoute` xs) as
+		Just a -> routeToEnd a xs
+	go (Free (Choice as)) xs = msum $ map (`routeToEnd` xs) as
 	go _ _ = Nothing
+
 
 getPure :: Route a -> Maybe a
 getPure (Pure a) = Just a
 getPure (Free (EOR a)) = getPure a
+getPure (Free (Choice as)) = msum $ map getPure as
 getPure _ = Nothing
 
+getPureWithoutEOR :: Route a -> Maybe a
+getPureWithoutEOR (Pure a) = Just a
+getPureWithoutEOR (Free (Choice as)) = msum $ map getPureWithoutEOR as
+getPureWithoutEOR _ = Nothing
+
 findEntries :: Route a -> [(String, Maybe a)]
-findEntries (Free (Match s a)) = [(s, getPure a)]
+findEntries (Free (Match s a)) = [(s, getPureWithoutEOR a)]
 findEntries (Free (Choice a)) = concatMap findEntries a
 findEntries _ = []
 

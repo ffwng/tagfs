@@ -32,36 +32,20 @@ toRoute f name = match name >> return (f name)
 regularFile :: FilePath -> Route Entry
 regularFile = toRoute RegularFile
 
-{-buildDir :: ([Entry] -> Entry) -> [(FilePath, Route Entry)] -> [(FilePath, Entry)]
-	-> Route Entry
-buildDir f dirs files = choice [makedir, makeroutes] where
-	makedir = eor >> return (f $ map (DirName . fst) dirs ++ map snd files)
-	makeroutes = choice $ map (\(x,r) -> match x >> r) dirs
-		++ map (\(x,r) -> match x >> return r) files
--}
-
 dir :: Entry -> Route Entry -> Route Entry
 dir e r = choice [eor >> return e, r]
 
 buildBaseRoute :: TagSet -> Route Entry
-buildBaseRoute = tagDirRoute []
+buildBaseRoute = buildSubRoute []
 
 buildSubRoute :: [Tag] -> TagSet -> Route Entry
 buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
 
 tagDirRoute :: [Tag] -> TagSet -> Route Entry
-{-tagDirRoute visited ts = buildDir (TagDir visited)
-	[("tags", tagsroute)] filesroute where
-	tagsroute = buildDir Dir (map tagroute . filter
-		(`notElem` visited) $ (tags ts)) []
-	tagroute tag = (tag, buildSubRoute (tag:visited) (query tag ts))
-	filesroute = map (\n -> (n, RegularFile n)) (files ts)
--}
-tagDirRoute visited ts = dir (TagDir visited) (choice [tagsroute, filesroute]) where
-	tagsroute = match "tags" >>
+tagDirRoute visited ts = dir (TagDir visited) tagsroute where
+	tagsroute = --match "tags" >>
 		dir Dir (choice (map tagroute . filter (`notElem` visited) $ (tags ts)))
 	tagroute tag = match tag >> buildSubRoute (tag:visited) (query tag ts)
-	filesroute = choice $ map regularFile (files ts)
 
 fileRoute :: TagSet -> Route Entry
 fileRoute ts = choice $ map get (files ts) where
@@ -87,11 +71,15 @@ tagFileRoute ts = do
 
 --data Dir = Dir [FilePath] [Entry]
 
-route :: Route Entry -> FilePath -> Maybe (Either [Entry] Entry)
+route :: Route Entry -> FilePath -> Maybe Entry
 route r (p:ps) = let seg = splitDirectories ps in case runRoute r seg of
 	Nothing -> Nothing
-	Just (Right a) -> Just (Right a)
-	Just (Left a) -> Just . Left $ map entry a
+	a -> a
+
+routeDir :: Route Entry -> FilePath -> Maybe [Entry]
+routeDir r (p:ps) = let seg = splitDirectories ps in case getRestSegments r seg of
+	Nothing -> Nothing
+	Just entries -> Just $ map entry entries
 	where
 		entry (_, Just a) = a
 		entry (s, Nothing) = DirName s

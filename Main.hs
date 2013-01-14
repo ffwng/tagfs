@@ -79,7 +79,7 @@ getFileStat ref p = do
 	status <- readIORef ref
 	let r = getRoute status
 	case route r p of
-		Just (Right e) -> Right <$> getEntryStat status ctx e
+		Just e -> Right <$> getEntryStat status ctx e
 		_ -> returnLeft eNOENT
 
 -- directories
@@ -95,10 +95,9 @@ readDirectory ref p = do
 	ctx <- getFuseContext
 	status <- readIORef ref
 	let r = getRoute status
-	case route r p of
+	case routeDir r p of
 		Nothing -> returnLeft eNOENT
-		Just (Right _) -> returnLeft eNOTDIR
-		Just (Left entries) -> do
+		Just entries -> do
 			stats <- zip (catMaybes $ map getPath entries)
 					<$> mapM (getEntryStat status ctx) entries
 			returnRight $ defaultStats ctx ++ stats
@@ -124,12 +123,13 @@ removeDirectory ref p'@(_:p) = do
 	let r = getRoute status
 	case route r p' of   -- todo
 		Nothing -> return eNOENT
-		Just (Right (TagDir _)) -> do
+		Just (TagDir _) -> do
 			let name = last seg
 			let ts = getTagSet status
 			let tsNew = wipeTag name ts
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
+		Just x | isDir x -> return ePERM
 		_ -> return eNOTDIR
 
 -- files
@@ -152,10 +152,10 @@ tagfsOpen ref p mode flags = do
 	let r = getRoute status
 	case route r p of
 		Nothing -> returnLeft eNOENT
-		Just (Right (RegularFile name)) -> do
+		Just (RegularFile name) -> do
 			h <- openFile (getRealPath status name) (toIOMode mode flags)
 			returnRight h
-		Just (Right (TagFile t _ _)) -> do
+		Just (TagFile t _ _) -> do
 			h <- tempFile
 			B.hPut h (tagFileContent t)
 			returnRight h
@@ -179,7 +179,7 @@ tagfsRelease ref p h = do
 	status <- readIORef ref
 	let r = getRoute status
 	case route r p of
-		Just (Right (TagFile _ name _)) -> do
+		Just (TagFile _ name _) -> do
 			hSeek h AbsoluteSeek 0
 			content <- B.hGetContents h
 			let ts = getTagSet status
@@ -194,9 +194,9 @@ tagfsSetFileSize ref p size = do
 	let r = getRoute status
 	case route r p of
 		Nothing -> return eNOENT
-		Just (Right (RegularFile name))
+		Just (RegularFile name)
 			-> setFileSize (getRealPath status name) size >> return eOK
-		Just (Right (TagFile _ _ _)) -> return eOK
+		Just (TagFile _ _ _) -> return eOK
 		_ -> return ePERM
 
 
