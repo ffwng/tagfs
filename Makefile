@@ -24,6 +24,9 @@ umount:
 debug: Main
 	./Main -d test
 
+foreground: Main
+	./Main -f test
+
 remount: Main
 	fusermount -u test
 	./Main test
