@@ -108,7 +108,7 @@ createDirectory ref (_:p) _ = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
-	case runRoute r seg of
+	case route' r seg of
 		Just _ -> return eEXIST
 		_ -> do
 			let name = last seg
@@ -122,15 +122,15 @@ removeDirectory ref (_:p) = do
 	let seg = splitDirectories p
 	status <- readIORef ref
 	let r = getRoute status
-	case runRoute r seg of   -- todo
+	case route' r seg of   -- todo
 		Nothing -> return eNOENT
-		Just (Just (TagDir _)) -> do
+		Just (TagDir _) -> do
 			let name = last seg
 			let ts = getTagSet status
 			let tsNew = wipeTag name ts
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
-		Just (Just x) | isDir x -> return ePERM
+		Just x | isDir x -> return ePERM
 		_ -> return eNOTDIR
 
 -- files

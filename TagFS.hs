@@ -73,13 +73,19 @@ tagFileRoute ts = do
 --data Dir = Dir [FilePath] [Entry]
 
 route :: Route Entry -> FilePath -> Maybe Entry
-route r (p:ps) = let seg = splitDirectories ps in case runRoute r seg of
+route r (p:ps) = let seg = splitDirectories ps in route' r seg
+
+route' :: Route Entry -> [FilePath] -> Maybe Entry
+route' r seg = case runRoute r seg of
 	Nothing -> Nothing
 	Just Nothing -> Just Dir  -- non pure values are directories
 	Just a -> a
 
 routeDir :: Route Entry -> FilePath -> Maybe (Maybe [Entry])
-routeDir r (p:ps) = let seg = splitDirectories ps in case getRestSegments r seg of
+routeDir r (p:ps) = let seg = splitDirectories ps in routeDir' r seg
+
+routeDir' :: Route Entry -> [FilePath] -> Maybe (Maybe [Entry])
+routeDir' r seg = case getRestSegments r seg of
 	Nothing -> Nothing
 	Just entries -> Just $ (map entry <$> entries)
 	where
