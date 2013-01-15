@@ -49,16 +49,6 @@ buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFile
 tagDirRoute :: [Tag] -> TagSet -> Route Entry
 tagDirRoute visited ts = tagsroute where
 	mytags = filter (`notElem` visited) (tags ts)
-	{-tagsroute = let (s, e) = splitTags mytags in
-		choice $ map simpleroute s ++ map extendedroute e
-	simpleroute tag = do
-		match (getValue tag)
-		dir (TagDir tag) $ subroute tag
-	extendedroute (name, tags) = do
-		match name
-		dir (ExtendedBaseDir name) $ do
-			choice $ map (simpleroute) tags
-	subroute tag = buildSubRoute (tag:visited) (query tag ts)-}
 	tagsroute = choice $ map tagroute mytags
 	tagroute tag@(Simple n) = subroute tag
 	tagroute tag@(Extended n v) = do
