@@ -47,15 +47,28 @@ tagDirRoute :: [Tag] -> TagSet -> Route Dir Entry
 tagDirRoute visited ts = tagsroute where
 	mytags = filter (`notElem` visited) (tags ts)
 	tagsroute = choice $ map tagroute mytags
-	tagroute tag@(Simple n) = subroute tag
-	tagroute tag@(Extended n v) = do
+	tagdir tag@(Simple n) = do
+		match n
+		dir $ TagDir tag
+	tagdir tag@(Extended n v) = do
 		match n
 		dir $ ExtendedBaseDir n
-		subroute tag
-	subroute tag = do
-		match $ getValue tag
+		match v
 		dir $ TagDir tag
-		buildSubRoute (tag:visited) (query tag ts)
+	tagroute tag = do
+		tagdir tag
+		subroute tag (tag:visited) (query tag ts)
+	subroute tag visited' ts' = do
+		choice
+			[ match "and" >> lroute (\tag' t -> t == tag && t == tag') tag
+			, match "or" >> lroute (\tag' t -> t == tag || t == tag') tag
+			, buildSubRoute visited' ts'
+			]
+	lroute :: (Tag -> Tag -> Bool) -> Tag -> Route Dir Entry
+	lroute f t = let mytags' = filter (/= t) mytags in choice $ map lrouteTag mytags' where
+		lrouteTag tag = do
+			tagdir tag
+			subroute tag visited (queryBy (f tag) ts)
 
 fileRoute :: TagSet -> Route Dir Entry
 fileRoute ts = choice $ map get (files ts) where
