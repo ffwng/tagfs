@@ -12,64 +12,59 @@ import Data.Function (on)
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
-	| TagDir Tag
-	| ExtendedBaseDir String
-	| Dir
 	| DirName FilePath
 	deriving Show
 
-getPath :: Entry -> Maybe FilePath
-getPath (RegularFile p) = Just p
-getPath (TagFile _ _ p) = Just p
-getPath (DirName p) = Just p
-getPath _ = Nothing
+data Dir = TagDir Tag
+	| ExtendedBaseDir String
+	| Dir
+
+getPath :: Entry -> FilePath
+getPath (RegularFile p) = p
+getPath (TagFile _ _ p) = p
+getPath (DirName p) = p
 
 isDir :: Entry -> Bool
-isDir (TagDir _) = True
-isDir (ExtendedBaseDir _) = True
-isDir Dir = True
 isDir (DirName _) = True
 isDir _ = False
 
-toRoute :: (FilePath -> Entry) -> FilePath -> Route Entry
+toRoute :: (FilePath -> Entry) -> FilePath -> Route Dir Entry
 toRoute f name = match name >> return (f name)
 
-regularFile :: FilePath -> Route Entry
+regularFile :: FilePath -> Route Dir Entry
 regularFile = toRoute RegularFile
 
-ifEOR :: Entry -> Route Entry -> Route Entry
-ifEOR e r = do
-	x <- isEOR
-	if x
-	then return e
-	else r
+dir :: Dir -> Route Dir ()
+dir = tag
 
-buildBaseRoute :: TagSet -> Route Entry
+buildBaseRoute :: TagSet -> Route Dir Entry
 buildBaseRoute ts = foldRoute $ buildSubRoute [] ts
 
-buildSubRoute :: [Tag] -> TagSet -> Route Entry
+buildSubRoute :: [Tag] -> TagSet -> Route Dir Entry
 buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
 
-tagDirRoute :: [Tag] -> TagSet -> Route Entry
+tagDirRoute :: [Tag] -> TagSet -> Route Dir Entry
 tagDirRoute visited ts = tagsroute where
 	mytags = filter (`notElem` visited) (tags ts)
 	tagsroute = choice $ map tagroute mytags
 	tagroute tag@(Simple n) = subroute tag
 	tagroute tag@(Extended n v) = do
 		match n
-		ifEOR (ExtendedBaseDir n) $ subroute tag
+		dir $ ExtendedBaseDir n
+		subroute tag
 	subroute tag = do
 		match $ getValue tag
-		ifEOR (TagDir tag) $ buildSubRoute (tag:visited) (query tag ts)
+		dir $ TagDir tag
+		buildSubRoute (tag:visited) (query tag ts)
 
-fileRoute :: TagSet -> Route Entry
+fileRoute :: TagSet -> Route Dir Entry
 fileRoute ts = choice $ map get (files ts) where
 	get file = regularFile file
 
 tagFileExt :: FilePath
 tagFileExt = ".tags"
 
-tagFileRoute :: TagSet -> Route Entry
+tagFileRoute :: TagSet -> Route Dir Entry
 tagFileRoute ts = do
 	(name, path) <- capture getName
 	let t = queryTags name ts
@@ -93,16 +88,19 @@ split p = split' (map f p) where
 split' :: FilePath -> [String]
 split' (p:ps) = splitDirectories ps
 
-route :: Route Entry -> FilePath -> Maybe Entry
+route :: Route Dir Entry -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg where
 
-route' :: Route Entry -> [FilePath] -> Maybe Entry
-route' r seg = fromMaybe Dir <$> runRoute r seg
+route' :: Route Dir Entry -> [FilePath] -> Maybe (Either Dir Entry)
+route' r seg = mapLeft (fromMaybe Dir) <$> runRoute r seg where
+	mapLeft :: (a -> c) -> Either a b -> Either c b
+	mapLeft f (Left x) = Left (f x)
+	mapLeft _ (Right r) = Right r
 
-routeDir :: Route Entry -> FilePath -> Maybe (Maybe [Entry])
+routeDir :: Route Dir Entry -> FilePath -> Maybe (Maybe [Entry])
 routeDir r p = let seg = split p in routeDir' r seg
 
-routeDir' :: Route Entry -> [FilePath] -> Maybe (Maybe [Entry])
+routeDir' :: Route Dir Entry -> [FilePath] -> Maybe (Maybe [Entry])
 routeDir' r seg = fmap (fmap (map entry)) $ getRestSegments r seg where
 	entry (_, Just a) = a
 	entry (s, Nothing) = DirName s

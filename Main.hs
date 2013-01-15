@@ -36,7 +36,7 @@ import Control.Exception
 
 
 data Status = Status
-	{ getRoute :: Route Entry
+	{ getRoute :: Route Dir Entry
 	, getTagSet :: TagSet
 	, getFileMapping :: Map FilePath FilePath
 	}
@@ -62,6 +62,9 @@ getEntryStat _ ctx (TagFile tags _ _) = return $ fileStat ctx (tagFileContentLen
 getEntryStat _ ctx e | isDir e = return $ dirStat ctx
 getEntryStat _ _ _ = error "getEntryStat: assertion failed"
 
+getDirStat :: Status -> FuseContext -> Dir -> IO FileStat
+getDirStat _ ctx _ = return $ dirStat ctx
+
 parseTag :: String -> Maybe Tag
 parseTag s = case span (/= tagSep) s of
 	(n, []) | notNull n -> Just (Simple n)
@@ -83,6 +86,30 @@ tagFileContentLength = B.length . tagFileContent
 parseTags :: ByteString -> [Tag]
 parseTags = catMaybes . map parseTag . lines . B.unpack
 
+forFile :: Route Dir Entry -> String -> a -> (Dir -> a) -> (Entry -> a) -> a
+forFile r p noent nofile f = case route r p of
+	Nothing -> noent
+	Just (Left dir) -> nofile dir
+	Just (Right e) -> f e
+
+forFile' :: Route Dir Entry -> [String] -> a -> (Dir -> a) -> (Entry -> a) -> a
+forFile' r p noent nofile f = case route' r p of
+	Nothing -> noent
+	Just (Left dir) -> nofile dir
+	Just (Right e) -> f e
+
+forDir :: Route Dir Entry -> String -> a -> (Entry -> a) -> (Dir -> a) -> a
+forDir r p noent nodir f = case route r p of
+	Nothing -> noent
+	Just (Right e) -> nodir e
+	Just (Left dir) -> f dir
+
+forDir' :: Route Dir Entry -> [String] -> a -> (Entry -> a) -> (Dir -> a) -> a
+forDir' r p noent nodir f = case route' r p of
+	Nothing -> noent
+	Just (Right e) -> nodir e
+	Just (Left dir) -> f dir
+
 -- fuse operations
 
 getFileStat :: IORef Status -> FilePath -> IO (Either Errno FileStat)
@@ -90,7 +117,10 @@ getFileStat ref p = do
 	ctx <- getFuseContext
 	status <- readIORef ref
 	let r = getRoute status
-	maybe (returnLeft eNOENT) (\e -> Right <$> getEntryStat status ctx e) $ route r p
+	--maybe (returnLeft eNOENT) (\e -> Right <$> getEntryStat status ctx e) $ route r p
+	forFile r p (returnLeft eNOENT)
+		(\d -> Right <$> getDirStat status ctx d)
+		(\d -> Right <$> getEntryStat status ctx d)
 
 -- directories
 
@@ -106,7 +136,7 @@ readDirectory ref p = do
 	status <- readIORef ref
 	let r = getRoute status
 	let buildEntries entries = do
-		stats <- zip (catMaybes $ map getPath entries)
+		stats <- zip (map getPath entries)
 			<$> mapM (getEntryStat status ctx) entries
 		returnRight $ defaultStats ctx ++ stats
 	maybe (returnLeft eNOENT) (maybe (returnLeft eNOTDIR) buildEntries) $ routeDir r p
@@ -124,9 +154,9 @@ createDirectory ref p _ = do
 	if isJust $ route' r seg
 	then return eEXIST
 	else case (,) <$> tag <*> route' r (softInit seg) of
-		Just (Simple v, ExtendedBaseDir name) -> newTag (Extended name v) status ref
-		Just (_, ExtendedBaseDir _) -> return ePERM
-		Just (tag', x) | isDir x -> newTag tag' status ref
+		Just (Simple v, Left (ExtendedBaseDir name)) -> newTag (Extended name v) status ref
+		Just (_, Left (ExtendedBaseDir _)) -> return ePERM
+		Just (tag', Left x) -> newTag tag' status ref
 		_ -> return eINVAL
 	where
 		newTag tag status ref = do
@@ -141,20 +171,18 @@ removeDirectory ref p = do
 	status <- readIORef ref
 	let r = getRoute status
 	let ts = getTagSet status
-	case route' r seg of
-		Nothing -> return eNOENT
-		Just (TagDir t) -> do
+	forDir' r seg (return eNOENT) (\_ -> return eNOTDIR) $ \x -> case x of
+		TagDir t -> do
 			let name = last seg
 			let tsNew = wipeTag t ts
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
-		Just (ExtendedBaseDir name) -> do
+		ExtendedBaseDir name -> do
 			let tags' = filter ((== name) . getName) (tags ts)
 			let tsNew = foldr wipeTag ts tags'
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
-		Just x | isDir x -> return ePERM
-		_ -> return eNOTDIR
+		_ -> return ePERM
 
 -- files
 
@@ -174,16 +202,15 @@ tagfsOpen ::  IORef Status -> FilePath -> OpenMode -> OpenFileFlags
 tagfsOpen ref p mode flags = do
 	status <- readIORef ref
 	let r = getRoute status
-	case route r p of
-		Nothing -> returnLeft eNOENT
-		Just (RegularFile name) -> do
+	forFile r p (returnLeft eNOENT) (\_ -> returnLeft ePERM) $ \x -> case x of
+		RegularFile name -> do
 			h <- openFile (getRealPath status name) (toIOMode mode flags)
 			returnRight h
-		Just (TagFile t _ _) -> do
+		TagFile t _ _ -> do
 			h <- tempFile
 			B.hPut h (tagFileContent t)
 			returnRight h
-		_ -> returnLeft ePERM
+		_ -> error "tagfsOpen: assertion failed"
 
 tagfsRead :: IORef Status -> FilePath -> Handle -> ByteCount -> FileOffset
 	-> IO (Either Errno ByteString)
@@ -202,8 +229,8 @@ tagfsRelease :: IORef Status -> FilePath -> Handle -> IO ()
 tagfsRelease ref p h = do
 	status <- readIORef ref
 	let r = getRoute status
-	case route r p of
-		Just (TagFile _ name _) -> do
+	forFile r p (return ()) (\_ -> return ()) $ \x -> case x of
+		TagFile _ name _ -> do
 			hSeek h AbsoluteSeek 0
 			content <- B.hGetContents h
 			let ts = getTagSet status
@@ -216,12 +243,11 @@ tagfsSetFileSize :: IORef Status -> FilePath -> FileOffset -> IO Errno
 tagfsSetFileSize ref p size = do
 	status <- readIORef ref
 	let r = getRoute status
-	case route r p of
-		Nothing -> return eNOENT
-		Just (RegularFile name)
+	forFile r p (return eNOENT) (\_ -> return eINVAL) $ \x -> case x of
+		RegularFile name
 			-> setFileSize (getRealPath status name) size >> return eOK
-		Just (TagFile _ _ _) -> return eOK
-		_ -> return ePERM
+		TagFile _ _ _ -> return eOK
+		_ -> error "tagfsSetFileStatus: assertion failed"
 
 
 -- filesystem
