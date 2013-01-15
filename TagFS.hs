@@ -37,8 +37,12 @@ toRoute f name = match name >> return (f name)
 regularFile :: FilePath -> Route Entry
 regularFile = toRoute RegularFile
 
-dir :: Entry -> Route Entry -> Route Entry
-dir e r = choice [eor >> return e, r]
+ifEOR :: Entry -> Route Entry -> Route Entry
+ifEOR e r = do
+	x <- isEOR
+	if x
+	then return e
+	else r
 
 buildBaseRoute :: TagSet -> Route Entry
 buildBaseRoute ts = foldRoute $ buildSubRoute [] ts
@@ -53,10 +57,10 @@ tagDirRoute visited ts = tagsroute where
 	tagroute tag@(Simple n) = subroute tag
 	tagroute tag@(Extended n v) = do
 		match n
-		dir (ExtendedBaseDir n) $ subroute tag
+		ifEOR (ExtendedBaseDir n) $ subroute tag
 	subroute tag = do
 		match $ getValue tag
-		dir (TagDir tag) $ buildSubRoute (tag:visited) (query tag ts)
+		ifEOR (TagDir tag) $ buildSubRoute (tag:visited) (query tag ts)
 
 fileRoute :: TagSet -> Route Entry
 fileRoute ts = choice $ map get (files ts) where
