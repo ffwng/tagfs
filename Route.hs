@@ -5,6 +5,9 @@ import Control.Monad
 import Control.Monad.Free
 import Control.Applicative
 import Data.Maybe
+import Data.Map (Map)
+import qualified Data.Map as M
+import Data.List
 
 import Text.PrettyPrint
 
@@ -49,6 +52,24 @@ runRoute r s = getPureOrEOR <$> routeToEnd r s
 getRestSegments :: Route a -> [String] -> Maybe (Maybe [(FilePath, Maybe a)])
 getRestSegments r s = findEntries <$> routeToEnd r s
 
+foldRoute :: Route a -> Route a
+foldRoute (Free (Match s a)) = Free (Match s (foldRoute a))
+foldRoute (Free (Choice as)) = foldChoice' as
+foldRoute r = r
+
+foldChoice' as = case map flatten $ groupBy sameMatch as of
+	[] -> noRoute
+	[x] -> x
+	xs -> choice xs
+	where
+		sameMatch (Free (Match s1 _)) (Free (Match s2 _)) = s1 == s2
+		sameMatch _ _ = False
+		flatten []  = noRoute
+		flatten [x] = foldRoute x
+		flatten xs@(Free (Match p _) : _) = Free (Match p (foldChoice'
+			[ next | (Free (Match _ next)) <- xs]))
+		flatten _ = error "flatten: assertion failed"
+
 routeToEnd :: Route a -> [String] -> Maybe (Route a)
 routeToEnd = go where
 	go a [] = Just a
@@ -72,10 +93,13 @@ getPureHelper f = go where
 	go (Free (Choice as)) = msum $ map go as
 	go r = f r
 
+findEntriesMap :: Route a -> Maybe (Map String (Maybe a))
+findEntriesMap (Free (Match s a)) = Just $ M.singleton s (getPure a)
+findEntriesMap (Free (Choice a)) = Just . M.unions . catMaybes $ map findEntriesMap a
+findEntriesMap _ = Nothing
+
 findEntries :: Route a -> Maybe [(String, Maybe a)]
-findEntries (Free (Match s a)) = Just [(s, getPure a)]
-findEntries (Free (Choice a)) = Just . concat . catMaybes $ map findEntries a
-findEntries _ = Nothing
+findEntries r = M.toList <$> findEntriesMap r
 
 prettyRoute :: (Show a) => Route a -> Doc
 prettyRoute (Pure a) = text "return" <+> text (show a)

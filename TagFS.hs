@@ -41,7 +41,7 @@ dir :: Entry -> Route Entry -> Route Entry
 dir e r = choice [eor >> return e, r]
 
 buildBaseRoute :: TagSet -> Route Entry
-buildBaseRoute ts = buildSubRoute [] ts
+buildBaseRoute ts = foldRoute $ buildSubRoute [] ts
 
 buildSubRoute :: [Tag] -> TagSet -> Route Entry
 buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
@@ -49,7 +49,7 @@ buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFile
 tagDirRoute :: [Tag] -> TagSet -> Route Entry
 tagDirRoute visited ts = tagsroute where
 	mytags = filter (`notElem` visited) (tags ts)
-	tagsroute = let (s, e) = splitTags mytags in
+	{-tagsroute = let (s, e) = splitTags mytags in
 		choice $ map simpleroute s ++ map extendedroute e
 	simpleroute tag = do
 		match (getValue tag)
@@ -58,14 +58,15 @@ tagDirRoute visited ts = tagsroute where
 		match name
 		dir (ExtendedBaseDir name) $ do
 			choice $ map (simpleroute) tags
-	subroute tag = buildSubRoute (tag:visited) (query tag ts)
-
-splitTags :: [Tag] -> ([Tag], [(String, [Tag])])
-splitTags = go ([], []) . groupBy ((==) `on` getName) where
-	go (s, e) [] = (s, e)
-	go (s, e) (s':xs) = case s' of
-		Simple _:_ -> go (s' ++ s, e) xs
-		Extended n _:_ -> go (s, (n, s'):e) xs
+	subroute tag = buildSubRoute (tag:visited) (query tag ts)-}
+	tagsroute = choice $ map tagroute mytags
+	tagroute tag@(Simple n) = subroute tag
+	tagroute tag@(Extended n v) = do
+		match n
+		dir (ExtendedBaseDir n) $ subroute tag
+	subroute tag = do
+		match $ getValue tag
+		dir (TagDir tag) $ buildSubRoute (tag:visited) (query tag ts)
 
 fileRoute :: TagSet -> Route Entry
 fileRoute ts = choice $ map get (files ts) where
@@ -83,7 +84,6 @@ tagFileRoute ts = do
 		getName n = case splitExtension n of
 			(name, ext) | ext == tagFileExt -> Just (name, n)
 			_ -> Nothing
-
 
 -- helper function for easier routing
 
