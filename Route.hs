@@ -35,6 +35,9 @@ choice = join . liftF . Choice
 eor :: Route ()
 eor = liftF (EOR ())
 
+isEOR :: Route Bool
+isEOR = choice [eor >> return True, return False]
+
 noRoute :: Route a
 noRoute = liftF NoRoute
 
