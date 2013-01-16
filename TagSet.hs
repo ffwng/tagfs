@@ -1,13 +1,15 @@
 module TagSet where
 
+import Prelude hiding (any)
 import System.IO (FilePath)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.List
+import Data.List hiding (any)
 import Control.Applicative
 import Control.Arrow (second)
+import Data.Foldable (any)
 
 data Tag = Simple String | Extended String String deriving (Eq, Ord, Show)
 data TagSet = TagSet (Set Tag) (Map FilePath (Set Tag))
@@ -32,7 +34,7 @@ query :: Tag -> TagSet -> TagSet
 query t (TagSet x ts) = TagSet x $ M.filter (S.member t) ts
 
 queryBy :: (Tag -> Bool) -> TagSet -> TagSet
-queryBy f (TagSet x ts) = TagSet x $ M.filter (any f . S.toList) ts
+queryBy f (TagSet x ts) = TagSet x $ M.filter (any f) ts
 
 tags :: TagSet -> [Tag]
 tags (TagSet x _) = S.toList x
