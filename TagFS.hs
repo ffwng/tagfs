@@ -11,6 +11,8 @@ import Data.Maybe
 import Data.Function (on)
 import Control.Monad.Trans
 import Control.Monad.Trans.State
+import Data.Set (Set)
+import qualified Data.Set as S
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
@@ -20,7 +22,7 @@ data Entry = RegularFile FilePath
 data Dir = TagDir Tag
 	| ExtendedBaseDir String
 	| Dir
-	deriving (Show, Eq)
+	deriving (Show, Ord, Eq)
 
 getPath :: Entry -> FilePath
 getPath (RegularFile p) = p
@@ -40,11 +42,13 @@ regularFile = toRoute RegularFile
 dir :: Dir -> Route Dir ()
 dir = tag
 
+allTags :: Set Tag -> Bool
+allTags = const True
 
-data FSStatus = FSStatus { tagSet :: TagSet, visited :: [Tag] }
+data FSStatus = FSStatus { tagSet :: TagSet, visited :: [Tag], predicate :: Set Tag -> Bool }
 
 makeStatus :: TagSet -> FSStatus
-makeStatus ts = FSStatus ts []
+makeStatus ts = FSStatus ts [] allTags
 
 type RouteBuilder = StateT FSStatus (Route Dir)
 
@@ -59,8 +63,11 @@ choice_ l = do
 modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
 modifyVisited f = modify (\s -> s { visited = f (visited s) })
 
-modifyTagSet :: (TagSet -> TagSet) -> RouteBuilder ()
-modifyTagSet f = modify (\s -> s { tagSet = f (tagSet s) })
+--modifyTagSet :: (TagSet -> TagSet) -> RouteBuilder ()
+--modifyTagSet f = modify (\s -> s { tagSet = f (tagSet s) })
+
+modifyPredicate :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> RouteBuilder ()
+modifyPredicate f = modify (\s -> s { predicate = f (predicate s) })
 
 buildBaseRoute :: TagSet -> Route Dir Entry
 buildBaseRoute ts = foldRoute $ evalStateT buildSubRoute (makeStatus ts)
@@ -86,33 +93,32 @@ plainTagRoute tag = do
 	-- todo: could be done better?
 	--modify (\s -> s { visited = tag:(visited s), tagSet = query tag (tagSet s) })
 	modifyVisited (tag:)
-	modifyTagSet (query tag)
+	--modifyTagSet (query tag)
+	modifyPredicate (\f s -> f s && S.member tag s)
 	buildSubRoute
 
 logicalDirsRoute :: Tag -> RouteBuilder Entry
 logicalDirsRoute tag = do
-	ts <- gets tagSet
-	modifyVisited (tag:)
-	visit <- gets visited
-	let mytags = filter (`notElem` visit) (tags ts)
-	tagDir tag
-	if null mytags
-	then lift noRoute
-	else choice_
-		[ lift (match "and") >> choice_ (map
-			(logicalTagRoute (\t tags' -> t `elem` tags' && tag `elem` tags')) mytags)
-		, lift (match "or") >> choice_ (map
-			(logicalTagRoute (\t tags' -> t `elem` tags' || tag `elem` tags')) mytags)
-		, lift (match "not") >> choice_ (map
-			(logicalTagRoute (\t tags' -> t `notElem` tags' && tag `elem` tags')) mytags)
+	choice_
+		[ logicalTagRoute (\f s -> f s && S.member tag s) "and" tag
+		, logicalTagRoute (\f s -> f s || S.member tag s) "or" tag
+		, logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
+		, lift (match "and")
+			>> logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
+		, lift (match "or")
+			>> logicalTagRoute (\f s -> f s || not (S.member tag s)) "not" tag
 		]
 
-logicalTagRoute :: (Tag -> [Tag] -> Bool) -> Tag -> RouteBuilder Entry
-logicalTagRoute f tag = do
+
+logicalTagRoute :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> String -> Tag
+	-> RouteBuilder Entry
+logicalTagRoute f funcname tag = do
+	lift (match funcname)
 	tagDir tag
 	--modify (\s -> s { visited = tag:(visited s), tagSet = queryBy (f tag) (tagSet s) })
 	modifyVisited (tag:)
-	modifyTagSet (queryBy (f tag))
+	--modifyTagSet (queryBy (f tag))
+	modifyPredicate f
 	buildSubRoute
 
 tagDir :: Tag -> RouteBuilder ()
@@ -127,8 +133,9 @@ tagDir tag@(Extended n v) = lift $ do
 
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
-	ts <- gets tagSet
-	lift $ choice $ map get (files ts) where
+	f <- gets predicate
+	files <- queryFiles f <$> gets tagSet
+	lift $ choice $ map get files where
 		get file = regularFile file
 
 tagFileExt :: FilePath
@@ -136,14 +143,18 @@ tagFileExt = ".tags"
 
 tagFileRoute :: RouteBuilder Entry
 tagFileRoute = do
-	ts <- gets tagSet
 	(name, path) <- lift $ capture getName
-	let t = queryTags name ts
-	lift $ maybe noRoute (\t' -> return $ TagFile t' name path) t
-	where
-		getName n = case splitExtension n of
-			(name, ext) | ext == tagFileExt -> Just (name, n)
-			_ -> Nothing
+	f <- gets predicate
+	ts <- gets tagSet
+	let files = queryFiles f ts
+	if name `notElem` files then lift noRoute
+	else do
+		let t = queryTags name ts
+		lift $ maybe noRoute (\t' -> return $ TagFile t' name path) t
+		where
+			getName n = case splitExtension n of
+				(name, ext) | ext == tagFileExt -> Just (name, n)
+				_ -> Nothing
 
 -- helper function for easier routing
 

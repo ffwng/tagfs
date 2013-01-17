@@ -68,14 +68,14 @@ runTag r s = case routeToEnd r s of
 getRestSegments :: Route t a -> Maybe [(FilePath, Maybe a)]
 getRestSegments = findEntries
 
-foldRoute :: Eq t => Route t a -> Route t a
+foldRoute :: (Eq t, Ord t) => Route t a -> Route t a
 foldRoute (Free (Match s a)) = Free (Match s (foldRoute a))
 foldRoute (Free (Choice as)) = foldChoice' as
 foldRoute (Free (Tag t a)) = Free (Tag t (foldRoute a))
 foldRoute r = r
 
 -- TODO: fold tag
-foldChoice' as = case map compose $ groupBy sameMatch (flatten as) of
+foldChoice' as = case map compose . groupBy sameMatch $ sortBy comp (flatten as) of
 	[] -> noRoute
 	[x] -> x
 	xs -> choice xs
@@ -83,6 +83,14 @@ foldChoice' as = case map compose $ groupBy sameMatch (flatten as) of
 		sameMatch (Free (Match s1 _)) (Free (Match s2 _)) = s1 == s2
 		sameMatch (Free (Tag t1 _)) (Free (Tag t2 _)) = t1 == t2
 		sameMatch _ _ = False
+
+		-- groups tags and matches
+		comp (Free (Tag t1 _)) (Free (Tag t2 _)) = compare t1 t2
+		comp (Free (Tag _ _)) _ = LT
+		comp (Free (Match s1 _)) (Free (Match s2 _)) = compare s1 s2
+		comp (Free (Match _ _)) (Free (Tag _ _)) = GT
+		comp (Free (Match _ _)) _ = LT
+		comp _ _ = EQ
 
 		compose []  = noRoute
 		compose [x] = foldRoute x
