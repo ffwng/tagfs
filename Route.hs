@@ -15,7 +15,6 @@ data Segment t a = Match String a
 	| Capture (String -> Maybe a)
 	| Choice [a]
 	| Tag t a
-	-- | EOR a   -- ^ End Of Route (ha ha)
 	| NoRoute
 	deriving Functor
 
@@ -36,18 +35,9 @@ choice = join . liftF . Choice
 tag :: t -> Route t ()
 tag t = liftF (Tag t ())
 
---eor :: Route ()
---eor = liftF (EOR ())
-
---isEOR :: Route Bool
---isEOR = choice [eor >> return True, return False]
-
 noRoute :: Route t a
 noRoute = liftF NoRoute
 
--- Nothing -> route failed
--- Just Nothing -> route succeeded, but had not finished
--- Just (Just x) -> route had finished with x
 runRoute :: Route t a -> [String] -> Maybe (Either (Maybe t) a)
 runRoute r s = case routeToEnd r s of
 	Nothing -> Nothing
@@ -60,21 +50,15 @@ runTag r s = case routeToEnd r s of
 	Just (Left e) -> Just (Just e)
 	_ -> Just Nothing
 
--- Nothing -> route failed
--- Just Nothing -> route succeeded, but leaved no rest segments
--- Just (Just e) -> route succeeded and leaved rest segments e
--- Note: a route may both finish and leave rest segments
--- (consider choice [eor >> return "finished", match "name" >> return "restsegment"]
 getRestSegments :: Route t a -> Maybe [(FilePath, Maybe a)]
 getRestSegments = findEntries
 
 foldRoute :: (Eq t, Ord t) => Route t a -> Route t a
 foldRoute (Free (Match s a)) = Free (Match s (foldRoute a))
-foldRoute (Free (Choice as)) = foldChoice' as
 foldRoute (Free (Tag t a)) = Free (Tag t (foldRoute a))
+foldRoute (Free (Choice as)) = foldChoice' as
 foldRoute r = r
 
--- TODO: fold tag
 foldChoice' as = case map compose . groupBy sameMatch $ sortBy comp (flatten as) of
 	[] -> noRoute
 	[x] -> x

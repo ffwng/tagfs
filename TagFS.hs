@@ -53,7 +53,6 @@ makeStatus ts = FSStatus ts [] allTags
 type RouteBuilder = StateT FSStatus (Route Dir)
 
 choice_ :: [RouteBuilder a] -> RouteBuilder a
---choice_ list = lift (choice <$> sequence list)
 choice_ l = do
 	state <- get
 	(a, state') <- lift . choice $ map (`runStateT` state) l
@@ -62,9 +61,6 @@ choice_ l = do
 
 modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
 modifyVisited f = modify (\s -> s { visited = f (visited s) })
-
---modifyTagSet :: (TagSet -> TagSet) -> RouteBuilder ()
---modifyTagSet f = modify (\s -> s { tagSet = f (tagSet s) })
 
 modifyPredicate :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> RouteBuilder ()
 modifyPredicate f = modify (\s -> s { predicate = f (predicate s) })
@@ -90,10 +86,7 @@ tagRoute t = choice_ [plainTagRoute t, logicalDirsRoute t]
 plainTagRoute :: Tag -> RouteBuilder Entry
 plainTagRoute tag = do
 	tagDir tag
-	-- todo: could be done better?
-	--modify (\s -> s { visited = tag:(visited s), tagSet = query tag (tagSet s) })
 	modifyVisited (tag:)
-	--modifyTagSet (query tag)
 	modifyPredicate (\f s -> f s && S.member tag s)
 	buildSubRoute
 
@@ -115,9 +108,7 @@ logicalTagRoute :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> String -> Tag
 logicalTagRoute f funcname tag = do
 	lift (match funcname)
 	tagDir tag
-	--modify (\s -> s { visited = tag:(visited s), tagSet = queryBy (f tag) (tagSet s) })
 	modifyVisited (tag:)
-	--modifyTagSet (queryBy (f tag))
 	modifyPredicate f
 	buildSubRoute
 

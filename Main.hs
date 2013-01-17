@@ -117,7 +117,6 @@ getFileStat ref p = do
 	ctx <- getFuseContext
 	status <- readIORef ref
 	let r = getRoute status
-	--maybe (returnLeft eNOENT) (\e -> Right <$> getEntryStat status ctx e) $ route r p
 	forFile r p (returnLeft eNOENT)
 		(\d -> Right <$> getDirStat status ctx d)
 		(\d -> Right <$> getEntryStat status ctx d)
