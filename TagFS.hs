@@ -92,10 +92,13 @@ plainTagRoute tag = do
 logicalDirsRoute :: Tag -> RouteBuilder Entry
 logicalDirsRoute tag = do
 	ts <- gets tagSet
+	modifyVisited (tag:)
 	visit <- gets visited
-	let mytags = filter (`notElem` (tag:visit)) (tags ts)
+	let mytags = filter (`notElem` visit) (tags ts)
 	tagDir tag
-	choice_
+	if null mytags
+	then lift noRoute
+	else choice_
 		[ lift (match "and") >> choice_ (map
 			(logicalTagRoute (\t tags' -> t `elem` tags' && tag `elem` tags')) mytags)
 		, lift (match "or") >> choice_ (map
