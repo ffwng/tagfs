@@ -33,8 +33,8 @@ fromFiles tags = TagSet (S.fromList tags) . M.fromList . map (second S.fromList)
 query :: Tag -> TagSet -> TagSet
 query t (TagSet x ts) = TagSet x $ M.filter (S.member t) ts
 
-queryBy :: (Tag -> Bool) -> TagSet -> TagSet
-queryBy f (TagSet x ts) = TagSet x $ M.filter (any f) ts
+queryBy :: ([Tag] -> Bool) -> TagSet -> TagSet
+queryBy f (TagSet x ts) = TagSet x $ M.filter (f . S.toList) ts
 
 tags :: TagSet -> [Tag]
 tags (TagSet x _) = S.toList x

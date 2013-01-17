@@ -9,15 +9,18 @@ import Data.List
 import Control.Applicative
 import Data.Maybe
 import Data.Function (on)
+import Control.Monad.Trans
+import Control.Monad.Trans.State
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
 	| DirName FilePath
-	deriving Show
+	deriving (Show, Eq)
 
 data Dir = TagDir Tag
 	| ExtendedBaseDir String
 	| Dir
+	deriving (Show, Eq)
 
 getPath :: Entry -> FilePath
 getPath (RegularFile p) = p
@@ -37,51 +40,103 @@ regularFile = toRoute RegularFile
 dir :: Dir -> Route Dir ()
 dir = tag
 
+
+data FSStatus = FSStatus { tagSet :: TagSet, visited :: [Tag] }
+
+makeStatus :: TagSet -> FSStatus
+makeStatus ts = FSStatus ts []
+
+type RouteBuilder = StateT FSStatus (Route Dir)
+
+choice_ :: [RouteBuilder a] -> RouteBuilder a
+--choice_ list = lift (choice <$> sequence list)
+choice_ l = do
+	state <- get
+	(a, state') <- lift . choice $ map (`runStateT` state) l
+	put state'
+	return a
+
+modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
+modifyVisited f = modify (\s -> s { visited = f (visited s) })
+
+modifyTagSet :: (TagSet -> TagSet) -> RouteBuilder ()
+modifyTagSet f = modify (\s -> s { tagSet = f (tagSet s) })
+
 buildBaseRoute :: TagSet -> Route Dir Entry
-buildBaseRoute ts = foldRoute $ buildSubRoute [] ts
+buildBaseRoute ts = foldRoute $ evalStateT buildSubRoute (makeStatus ts)
 
-buildSubRoute :: [Tag] -> TagSet -> Route Dir Entry
-buildSubRoute visited ts = choice [fileRoute ts, tagDirRoute visited ts, tagFileRoute ts]
+buildSubRoute :: RouteBuilder Entry
+buildSubRoute = choice_ [filesRoute, tagDirsRoute]
 
-tagDirRoute :: [Tag] -> TagSet -> Route Dir Entry
-tagDirRoute visited ts = tagsroute where
-	mytags = filter (`notElem` visited) (tags ts)
-	tagsroute = choice $ map tagroute mytags
-	tagdir tag@(Simple n) = do
-		match n
-		dir $ TagDir tag
-	tagdir tag@(Extended n v) = do
-		match n
-		dir $ ExtendedBaseDir n
-		match v
-		dir $ TagDir tag
-	tagroute tag = do
-		tagdir tag
-		subroute tag (tag:visited) (query tag ts)
-	subroute tag visited' ts' = do
-		choice
-			[ match "and" >> lroute (\tag' t -> t == tag && t == tag') tag
-			, match "or" >> lroute (\tag' t -> t == tag || t == tag') tag
-			, buildSubRoute visited' ts'
-			]
-	lroute :: (Tag -> Tag -> Bool) -> Tag -> Route Dir Entry
-	lroute f t = let mytags' = filter (/= t) mytags in choice $ map lrouteTag mytags' where
-		lrouteTag tag = do
-			tagdir tag
-			subroute tag visited (queryBy (f tag) ts)
+filesRoute :: RouteBuilder Entry
+filesRoute = choice_ [regularFileRoute, tagFileRoute]
 
-fileRoute :: TagSet -> Route Dir Entry
-fileRoute ts = choice $ map get (files ts) where
-	get file = regularFile file
+tagDirsRoute :: RouteBuilder Entry
+tagDirsRoute = do
+	ts <- gets tagSet
+	visit <- gets visited
+	let mytags = filter (`notElem` visit) (tags ts)
+	choice_ (map tagRoute mytags)
+
+tagRoute t = choice_ [plainTagRoute t, logicalDirsRoute t]
+	
+plainTagRoute :: Tag -> RouteBuilder Entry
+plainTagRoute tag = do
+	tagDir tag
+	-- todo: could be done better?
+	--modify (\s -> s { visited = tag:(visited s), tagSet = query tag (tagSet s) })
+	modifyVisited (tag:)
+	modifyTagSet (query tag)
+	buildSubRoute
+
+logicalDirsRoute :: Tag -> RouteBuilder Entry
+logicalDirsRoute tag = do
+	ts <- gets tagSet
+	visit <- gets visited
+	let mytags = filter (`notElem` (tag:visit)) (tags ts)
+	tagDir tag
+	choice_
+		[ lift (match "and") >> choice_ (map
+			(logicalTagRoute (\t tags' -> t `elem` tags' && tag `elem` tags')) mytags)
+		, lift (match "or") >> choice_ (map
+			(logicalTagRoute (\t tags' -> t `elem` tags' || tag `elem` tags')) mytags)
+		, lift (match "not") >> choice_ (map
+			(logicalTagRoute (\t tags' -> t `notElem` tags' && tag `elem` tags')) mytags)
+		]
+
+logicalTagRoute :: (Tag -> [Tag] -> Bool) -> Tag -> RouteBuilder Entry
+logicalTagRoute f tag = do
+	tagDir tag
+	--modify (\s -> s { visited = tag:(visited s), tagSet = queryBy (f tag) (tagSet s) })
+	modifyVisited (tag:)
+	modifyTagSet (queryBy (f tag))
+	buildSubRoute
+
+tagDir :: Tag -> RouteBuilder ()
+tagDir tag@(Simple n) = lift $ do
+	match n
+	dir $ TagDir tag
+tagDir tag@(Extended n v) = lift $ do
+	match n
+	dir $ ExtendedBaseDir n
+	match v
+	dir $ TagDir tag
+
+regularFileRoute :: RouteBuilder Entry
+regularFileRoute = do
+	ts <- gets tagSet
+	lift $ choice $ map get (files ts) where
+		get file = regularFile file
 
 tagFileExt :: FilePath
 tagFileExt = ".tags"
 
-tagFileRoute :: TagSet -> Route Dir Entry
-tagFileRoute ts = do
-	(name, path) <- capture getName
+tagFileRoute :: RouteBuilder Entry
+tagFileRoute = do
+	ts <- gets tagSet
+	(name, path) <- lift $ capture getName
 	let t = queryTags name ts
-	maybe noRoute (\t' -> return $ TagFile t' name path) t
+	lift $ maybe noRoute (\t' -> return $ TagFile t' name path) t
 	where
 		getName n = case splitExtension n of
 			(name, ext) | ext == tagFileExt -> Just (name, n)

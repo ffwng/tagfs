@@ -68,23 +68,34 @@ runTag r s = case routeToEnd r s of
 getRestSegments :: Route t a -> [String] -> Maybe (Maybe [(FilePath, Maybe a)])
 getRestSegments r s = fmap (>>= findEntries . snd) (runTag r s)
 
-foldRoute :: Route t a -> Route t a
+foldRoute :: Eq t => Route t a -> Route t a
 foldRoute (Free (Match s a)) = Free (Match s (foldRoute a))
 foldRoute (Free (Choice as)) = foldChoice' as
+foldRoute (Free (Tag t a)) = Free (Tag t (foldRoute a))
 foldRoute r = r
 
-foldChoice' as = case map flatten $ groupBy sameMatch as of
+-- TODO: fold tag
+foldChoice' as = case map compose $ groupBy sameMatch (flatten as) of
 	[] -> noRoute
 	[x] -> x
 	xs -> choice xs
 	where
 		sameMatch (Free (Match s1 _)) (Free (Match s2 _)) = s1 == s2
+		sameMatch (Free (Tag t1 _)) (Free (Tag t2 _)) = t1 == t2
 		sameMatch _ _ = False
-		flatten []  = noRoute
-		flatten [x] = foldRoute x
-		flatten xs@(Free (Match p _) : _) = Free (Match p (foldChoice'
+
+		compose []  = noRoute
+		compose [x] = foldRoute x
+		compose xs@(Free (Match p _) : _) = Free (Match p (foldChoice'
 			[ next | (Free (Match _ next)) <- xs]))
-		flatten _ = error "flatten: assertion failed"
+		compose xs@(Free (Tag t _) : _) = Free (Tag t (foldChoice'
+			[ next | (Free (Tag _ next)) <- xs]))
+		compose _ = error "compose: assertion failed"
+
+		flatten :: [Route t a] -> [Route t a]
+		flatten [] = []
+		flatten ((Free (Choice as)):xs) = flatten as ++ flatten xs
+		flatten (x:xs) = x : flatten xs
 
 routeToEnd :: Route t a -> [String] -> Maybe (Either (Maybe t, Route t a) a)
 routeToEnd = flip (go n) where
@@ -107,18 +118,20 @@ getPure = go where
 findEntriesMap :: Route t a -> Maybe (Map String (Maybe a))
 findEntriesMap (Free (Match s a)) = Just $ M.singleton s (getPure a)
 findEntriesMap (Free (Choice a)) = Just . M.unions . catMaybes $ map findEntriesMap a
+findEntriesMap (Free (Tag _ a)) = findEntriesMap a
 findEntriesMap _ = Nothing
 
 findEntries :: Route t a -> Maybe [(String, Maybe a)]
 findEntries r = M.toList <$> findEntriesMap r
 
-prettyRoute :: (Show t, Show a) => Route t a -> Doc
-prettyRoute (Pure a) = text "return" <+> text (show a)
-prettyRoute (Free (Match p next)) = text "match"
-	<+> doubleQuotes (text p) $+$ prettyRoute next
-prettyRoute (Free (Capture f)) = text "capture <func>"
-	<> text (show (fmap prettyRoute (f "")))
-prettyRoute (Free (Choice cs)) = text "choice"
-	<+> (cat $ map (\r -> text "do" <+> (nest 1 $ prettyRoute r)) cs)
-prettyRoute (Free (Tag t a)) = text "tag" <+> text (show t) $+$ prettyRoute a
-prettyRoute (Free NoRoute) = text "no route"
+prettyRoute :: (Show t, Show a) => Int -> Route t a -> Doc
+prettyRoute _ (Pure a) = text "return" <+> text (show a)
+prettyRoute 0 _ = text ""
+prettyRoute n (Free (Match p next)) = text "match"
+	<+> doubleQuotes (text p) $+$ prettyRoute (n-1) next
+prettyRoute n (Free (Capture f)) = text "capture <func>"
+	<> text (show (fmap (prettyRoute (n-1)) (f "")))
+prettyRoute n (Free (Choice cs)) = text "choice"
+	<+> (cat $ map (\r -> text "do" <+> (nest 1 $ prettyRoute (n-1) r)) cs)
+prettyRoute n (Free (Tag t a)) = text "tag" <+> text (show t) $+$ prettyRoute (n-1) a
+prettyRoute n (Free NoRoute) = text "no route"
