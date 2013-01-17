@@ -172,7 +172,11 @@ routeDir :: Route Dir Entry -> FilePath -> Maybe (Maybe [Entry])
 routeDir r p = let seg = split p in routeDir' r seg
 
 routeDir' :: Route Dir Entry -> [FilePath] -> Maybe (Maybe [Entry])
-routeDir' r seg = fmap (fmap (map entry)) $ getRestSegments r seg where
+routeDir' r seg = fmap (>>= go) (runTag r seg) where
+	go (t, r) = let x = getRestSegments r in
+		-- anything with a tag is a dir
+		if isJust t then Just . map entry $ fromMaybe [] x
+		else map entry <$> x
 	entry (_, Just a) = a
 	entry (s, Nothing) = DirName s
 

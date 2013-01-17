@@ -65,8 +65,8 @@ runTag r s = case routeToEnd r s of
 -- Just (Just e) -> route succeeded and leaved rest segments e
 -- Note: a route may both finish and leave rest segments
 -- (consider choice [eor >> return "finished", match "name" >> return "restsegment"]
-getRestSegments :: Route t a -> [String] -> Maybe (Maybe [(FilePath, Maybe a)])
-getRestSegments r s = fmap (>>= findEntries . snd) (runTag r s)
+getRestSegments :: Route t a -> Maybe [(FilePath, Maybe a)]
+getRestSegments = findEntries
 
 foldRoute :: Eq t => Route t a -> Route t a
 foldRoute (Free (Match s a)) = Free (Match s (foldRoute a))
