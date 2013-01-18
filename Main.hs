@@ -33,6 +33,7 @@ import Data.Map (Map)
 import qualified Data.Map as M
 import Data.Maybe
 import Control.Exception
+import Control.Monad
 
 
 data Status = Status
@@ -201,13 +202,15 @@ tagfsOpen ::  IORef Status -> FilePath -> OpenMode -> OpenFileFlags
 tagfsOpen ref p mode flags = do
 	status <- readIORef ref
 	let r = getRoute status
+	let iomode = toIOMode mode flags
 	forFile r p (returnLeft eNOENT) (\_ -> returnLeft ePERM) $ \x -> case x of
 		RegularFile name -> do
-			h <- openFile (getRealPath status name) (toIOMode mode flags)
+			h <- openFile (getRealPath status name) iomode
 			returnRight h
 		TagFile t _ _ -> do
 			h <- tempFile
-			B.hPut h (tagFileContent t)
+			when (iomode /= WriteMode) $ B.hPut h (tagFileContent t)
+			when (iomode /= AppendMode) $ hSeek h AbsoluteSeek 0
 			returnRight h
 		_ -> error "tagfsOpen: assertion failed"
 
@@ -228,7 +231,7 @@ tagfsRelease :: IORef Status -> FilePath -> Handle -> IO ()
 tagfsRelease ref p h = do
 	status <- readIORef ref
 	let r = getRoute status
-	forFile r p (return ()) (\_ -> return ()) $ \x -> case x of
+	forFile r p (return ()) (const $ return ()) $ \x -> case x of
 		TagFile _ name _ -> do
 			hSeek h AbsoluteSeek 0
 			content <- B.hGetContents h
@@ -242,11 +245,27 @@ tagfsSetFileSize :: IORef Status -> FilePath -> FileOffset -> IO Errno
 tagfsSetFileSize ref p size = do
 	status <- readIORef ref
 	let r = getRoute status
-	forFile r p (return eNOENT) (\_ -> return eINVAL) $ \x -> case x of
+	forFile r p (return eNOENT) (const $ return eINVAL) $ \x -> case x of
 		RegularFile name
 			-> setFileSize (getRealPath status name) size >> return eOK
-		TagFile _ _ _ -> return eOK
+		TagFile {} -> return eOK
 		_ -> error "tagfsSetFileStatus: assertion failed"
+
+tagfsCreateLink :: IORef Status -> FilePath -> FilePath -> IO Errno
+tagfsCreateLink ref src dst = do
+	status <- readIORef ref
+	let r = getRoute status
+	let dstpath = dropFileName dst
+	forFile r src (return eNOENT) (const $ return eINVAL) $ \f -> case f of
+		RegularFile name ->
+			forDir r dstpath (return eNOENT) (const $ return eNOTDIR) $ \d -> case d of
+				TagDir tag -> do
+					let ts = getTagSet status
+					let tsNew = addTag tag name ts
+					writeIORef ref (updateStatus status tsNew)
+					return eOK
+				_ -> return eINVAL
+		_ -> return eINVAL
 
 
 -- filesystem
@@ -274,6 +293,7 @@ fsOps r = defaultFuseOps
 	, fuseWrite = tagfsWrite r
 	, fuseRelease = tagfsRelease r
 	, fuseSetFileSize = tagfsSetFileSize r
+	, fuseCreateLink = tagfsCreateLink r
 	, fuseGetFileSystemStats = getFileSystemStats
 	}
 	
