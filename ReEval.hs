@@ -1,4 +1,4 @@
-{-# LANGUAGE ExistentialQuantifications #-}
+{-# LANGUAGE ExistentialQuantification #-}
 module ReEval where
 
 import Data.IORef
@@ -10,7 +10,7 @@ unsharedValue :: Unshared a -> a
 unsharedValue (Unshared f x) = f x
 
 data ReEval a = ReEval {
-	calculation :: Unshared a
+	calculation :: Unshared a,
 	currentValue :: IORef a
 }
 
@@ -25,3 +25,6 @@ readReEval r = unsafePerformIO $ readIORef (currentValue r)
 
 resetReEval :: ReEval a -> IO ()
 resetReEval r = writeIORef (currentValue r) (unsharedValue (calculation r))
+
+instance Functor ReEval where
+	fmap f = newReEval f . readReEval
