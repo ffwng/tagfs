@@ -66,7 +66,7 @@ modifyPredicate :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> RouteBuilder ()
 modifyPredicate f = modify (\s -> s { predicate = f (predicate s) })
 
 buildBaseRoute :: TagSet -> Route Dir Entry
-buildBaseRoute ts = foldRoute $ evalStateT buildSubRoute (makeStatus ts)
+buildBaseRoute ts = evalStateT buildSubRoute (makeStatus ts)
 
 buildSubRoute :: RouteBuilder Entry
 buildSubRoute = choice_ [filesRoute, tagDirsRoute]

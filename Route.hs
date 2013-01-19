@@ -4,7 +4,7 @@ module Route where
 import ReEval
 
 import Control.Monad
-import Control.Monad.Free
+import Control.Monad.Trans.Free
 import Control.Applicative
 import Data.Maybe
 import Data.Map (Map)
@@ -21,38 +21,35 @@ data Segment t a = Match String a
 	| NoRoute
 	deriving Functor
 
-newtype ReEvalSegment t a = ReEvalSegment {
-	getSegment :: ReEval (Segment t a)
-} deriving Functor
+type Route t = FreeT (Segment t) ReEval
+type RouteSegment t a = FreeF (Segment t) a (Route t a)
 
-type Route t = Free (ReEvalSegment t)
+eval :: Route t a -> RouteSegment t a
+eval = readReEval . runFreeT
 
-new_ :: (b -> Segment t a) -> b -> ReEvalSegment t a
-new_ f b = ReEvalSegment $ newReEval f b
-
-read_ :: ReEvalSegment t a -> Segment t a
-read_ = readReEval . getSegment
-
-reset_ :: ReEvalSegment t a -> IO ()
-reset_ = resetReEval . getSegment
+uneval :: RouteSegment t a -> Route t a
+uneval = FreeT . return
 
 match :: String -> Route t ()
-match = liftF . new_ (\a -> Match a ())
+match a = liftF $ Match a ()
 
 capture :: (String -> Maybe a) -> Route t a
-capture = liftF . new_ Capture
+capture = liftF . Capture
 
 captureBool :: (String -> Bool) -> Route t String
 captureBool f = capture (\a -> if f a then Just a else Nothing)
 
-choice :: [Route t a] -> Route t a
-choice = join . liftF . new_ Choice
+choice :: (Eq t, Ord t) => [Route t a] -> Route t a
+choice = foldChoice
+
+rawChoice :: [Route t a] -> Route t a
+rawChoice = join . liftF . Choice
 
 tag :: t -> Route t ()
-tag = liftF . new_ (\t -> Tag t ())
+tag t = liftF $ Tag t ()
 
 noRoute :: Route t a
-noRoute = liftF $ new_ (\() -> NoRoute) ()
+noRoute = liftF NoRoute
 
 runRoute :: Route t a -> [String] -> Maybe (Either (Maybe t) a)
 runRoute r s = case routeToEnd r s of
@@ -69,20 +66,15 @@ runTag r s = case routeToEnd r s of
 getRestSegments :: Route t a -> Maybe [(FilePath, Maybe a)]
 getRestSegments = findEntries
 
-foldRoute :: (Eq t, Ord t) => Route t a -> Route t a
-{-foldRoute (Free (Match s a)) = Free (Match s (foldRoute a))
-foldRoute (Free (Tag t a)) = Free (Tag t (foldRoute a))
-foldRoute (Free (Choice as)) = foldChoice' as-}
-foldRoute r = r
-
-{-foldChoice' as = case map compose . groupBy sameMatch $ sortBy comp (flatten as) of
+foldChoice :: (Eq t, Ord t) => [Route t a] -> Route t a
+foldChoice rs = case map compose . groupBy same . sortBy comp . flatten $ map eval rs of
 	[] -> noRoute
 	[x] -> x
-	xs -> choice xs
+	xs -> rawChoice xs
 	where
-		sameMatch (Free (Match s1 _)) (Free (Match s2 _)) = s1 == s2
-		sameMatch (Free (Tag t1 _)) (Free (Tag t2 _)) = t1 == t2
-		sameMatch _ _ = False
+		same (Free (Match s1 _)) (Free (Match s2 _)) = s1 == s2
+		same (Free (Tag t1 _)) (Free (Tag t2 _)) = t1 == t2
+		same _ _ = False
 
 		-- groups tags and matches
 		comp (Free (Tag t1 _)) (Free (Tag t2 _)) = compare t1 t2
@@ -92,63 +84,57 @@ foldRoute r = r
 		comp (Free (Match _ _)) _ = LT
 		comp _ _ = EQ
 
-		compose []  = noRoute
-		compose [x] = foldRoute x
-		compose xs@(Free (Match p _) : _) = Free (Match p (foldChoice'
-			[ next | (Free (Match _ next)) <- xs]))
-		compose xs@(Free (Tag t _) : _) = Free (Tag t (foldChoice'
-			[ next | (Free (Tag _ next)) <- xs]))
+		compose :: [RouteSegment t a] -> Route t a
+		compose [] = noRoute
+		compose [x] = uneval x
+		compose xs@(Free (Match p _) : _) = uneval $ Free (Match p (rawChoice
+			[ n | (Free (Match _ n)) <- xs]))
+		compose xs@(Free (Tag t _) : _) = uneval $ Free (Tag t (rawChoice
+			[ n | (Free (Tag _ n)) <- xs]))
 		compose _ = error "compose: assertion failed"
-
-		flatten :: [Route t a] -> [Route t a]
+		
+		flatten :: [RouteSegment t a] -> [RouteSegment t a]
 		flatten [] = []
-		flatten ((Free (Choice as)):xs) = flatten as ++ flatten xs
-		flatten (x:xs) = x : flatten xs-}
+		flatten ((Free (Choice as)):xs) = flatten (map eval as) ++ flatten xs
+		flatten (x:xs) = x : flatten xs
 
 routeToEnd :: Route t a -> [String] -> Maybe (Either (Maybe t, Route t a) a)
-routeToEnd r seg = go n seg r where
+routeToEnd r seg = go n seg $ eval r where
 	n = Nothing
+
+	go :: Maybe t -> [String] -> RouteSegment t a -> Maybe (Either (Maybe t, Route t a) a)
 	go _ _ (Pure a) = Just (Right a)
-	go t [] a = Just (Left (t, a))
-	go t seg (Free f) = go' t seg (read_ f)
+	go _ xs (Free (Tag t a)) = go (Just t) xs $ eval a
+	go t [] a = Just (Left (t, uneval a))
+	go _ (x:xs) (Free (Match s a)) | s == x = go n xs $ eval a
+	go _ (x:xs) (Free (Capture f)) = f x >>= go n xs . eval
+	go _ xs (Free (Choice as)) = unsafePerformIO $ find xs as
+	go _ _ _ = n
 
-	go' :: Maybe t -> [String] -> Segment t (Route t a)
-		-> Maybe (Either (Maybe t, Route t a) a)
-	go' _ xs (Tag t a) = go (Just t) xs a
-	go' _ (x:xs) (Match s a) | s == x = go n xs a
-	go' _ (x:xs) (Capture f) = f x >>= go n xs
-	go' _ xs (Choice as) = find xs as --msum $ map (go n xs) as
-	go' _ _ _ = Nothing
-
-	find xs = unsafePerformIO . find' where
-		find' [] = return Nothing
-		find' (a:as) = do
-			let res = go n xs a
-			if isJust res then do
-				mapM reset_' as
-				return res
-			else do
-				reset_' a
-				find' as
-
-	reset_' :: Route t a -> IO ()
-	reset_' (Pure _) = return ()
-	reset_' (Free f) = reset_ f
+	find :: [String] -> [Route t a] -> IO (Maybe (Either (Maybe t, Route t a) a))
+	find _ [] = return Nothing
+	find xs (a:as) = do
+		let res = go n xs $ eval a
+		if isJust res then do
+			mapM (resetReEval . runFreeT) as
+			return res
+		else do
+			resetReEval $ runFreeT a
+			find xs as
 
 getPure :: Route t a -> Maybe a
-getPure r = go r where
+getPure r = go $ eval r where
 	go (Pure a) = Just a
-	go (Free f) = case read_ f of
-		Choice as -> msum $ map go as
+	go (Free f) = case f of
+		Choice as -> msum $ map getPure as
 		_ -> Nothing
 
 findEntriesMap :: Route t a -> Maybe (Map String (Maybe a))
-findEntriesMap (Free f) = case read_ f of
-	Match s a -> Just $ M.singleton s (getPure a)
-	Choice a -> Just . M.unions . catMaybes $ map findEntriesMap a
-	Tag _ a -> findEntriesMap a
-	_ -> Nothing
-findEntriesMap _ = Nothing
+findEntriesMap r = go $ eval r where
+	go (Free (Match s a)) = Just $ M.singleton s (getPure a)
+	go (Free (Choice a)) = Just . M.unions . catMaybes $ map findEntriesMap a
+	go (Free (Tag _ a)) = findEntriesMap a
+	go _ = Nothing
 
 findEntries :: Route t a -> Maybe [(String, Maybe a)]
 findEntries r = M.toList <$> findEntriesMap r

@@ -3,6 +3,8 @@ module ReEval where
 
 import Data.IORef
 import System.IO.Unsafe
+import Control.Applicative
+import Control.Monad
 
 data Unshared a = forall b. Unshared (b -> a) b
 
@@ -27,6 +29,13 @@ resetReEval :: ReEval a -> IO ()
 resetReEval r = writeIORef (currentValue r) (unsharedValue (calculation r))
 
 instance Functor ReEval where
-	--fmap f = newReEval f . readReEval
 	fmap f (ReEval (Unshared f' x) v) = ReEval (Unshared (f . f') x) $
 		unsafePerformIO $ readIORef v >>= newIORef . f
+
+instance Monad ReEval where
+	return = newReEval id
+	v >>= f = fmap (readReEval . f) v
+
+instance Applicative ReEval where
+	pure = return
+	(<*>) = ap
