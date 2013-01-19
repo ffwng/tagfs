@@ -89,7 +89,7 @@ parseTags = catMaybes . map parseTag . lines . B.unpack
 
 forFile :: Route Dir Entry -> String -> IO a -> (Dir -> IO a) -> (Entry -> IO a) -> IO a
 forFile r p noent nofile f = do
-	r' <- route r p
+	let r' = route r p
 	case r' of
 		Nothing -> noent
 		Just (Left dir) -> nofile dir
@@ -97,7 +97,7 @@ forFile r p noent nofile f = do
 
 forFile' :: Route Dir Entry -> [String] -> IO a -> (Dir -> IO a) -> (Entry -> IO a) -> IO a
 forFile' r p noent nofile f = do
-	r' <- route' r p
+	let r' = route' r p
 	case r' of
 		Nothing -> noent
 		Just (Left dir) -> nofile dir
@@ -105,7 +105,7 @@ forFile' r p noent nofile f = do
 
 forDir :: Route Dir Entry -> String -> IO a -> (Entry -> IO a) -> (Dir -> IO a) -> IO a
 forDir r p noent nodir f = do
-	r' <- route r p
+	let r' = route r p
 	case r' of
 		Nothing -> noent
 		Just (Right e) -> nodir e
@@ -113,7 +113,7 @@ forDir r p noent nodir f = do
 
 forDir' :: Route Dir Entry -> [String] -> IO a -> (Entry -> IO a) -> (Dir -> IO a) -> IO a
 forDir' r p noent nodir f = do
-	r' <- route' r p
+	let r' = route' r p
 	case r' of
 		Nothing -> noent
 		Just (Right e) -> nodir e
@@ -147,7 +147,7 @@ readDirectory ref p = do
 		stats <- zip (map getPath entries)
 			<$> mapM (getEntryStat status ctx) entries
 		returnRight $ defaultStats ctx ++ stats
-	maybe (returnLeft eNOENT) (maybe (returnLeft eNOTDIR) buildEntries) =<< routeDir r p
+	maybe (returnLeft eNOENT) (maybe (returnLeft eNOTDIR) buildEntries) $ routeDir r p
 
 softInit :: [a] -> [a]
 softInit [] = []
@@ -159,11 +159,11 @@ createDirectory ref p _ = do
 	let tag = parseTag (last seg)
 	status <- readIORef ref
 	let r = getRoute status
-	r' <- route' r seg
+	let r' = route' r seg
 	if isJust r'
 	then return eEXIST
 	else do
-		r'' <- route' r (softInit seg)
+		let r'' = route' r (softInit seg)
 		case (,) <$> tag <*> r'' of
 			Just (Simple v, Left (ExtendedBaseDir name))
 				-> newTag (Extended name v) status ref

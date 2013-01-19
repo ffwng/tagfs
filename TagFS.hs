@@ -161,20 +161,20 @@ split p = split' (map f p) where
 split' :: FilePath -> [String]
 split' (p:ps) = splitDirectories ps
 
-route :: Route Dir Entry -> FilePath -> IO (Maybe (Either Dir Entry))
+route :: Route Dir Entry -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg where
 
-route' :: Route Dir Entry -> [FilePath] -> IO (Maybe (Either Dir Entry))
-route' r seg = (fmap $ mapLeft (fromMaybe Dir)) <$> runRoute r seg where
+route' :: Route Dir Entry -> [FilePath] -> Maybe (Either Dir Entry)
+route' r seg = (fmap $ mapLeft (fromMaybe Dir)) $ runRoute r seg where
 	mapLeft :: (a -> c) -> Either a b -> Either c b
 	mapLeft f (Left x) = Left (f x)
 	mapLeft _ (Right r) = Right r
 
-routeDir :: Route Dir Entry -> FilePath -> IO (Maybe (Maybe [Entry]))
+routeDir :: Route Dir Entry -> FilePath -> Maybe (Maybe [Entry])
 routeDir r p = let seg = split p in routeDir' r seg
 
-routeDir' :: Route Dir Entry -> [FilePath] -> IO (Maybe (Maybe [Entry]))
-routeDir' r seg = fmap (>>= go) <$> runTag r seg where
+routeDir' :: Route Dir Entry -> [FilePath] -> Maybe (Maybe [Entry])
+routeDir' r seg = fmap (>>= go) $ runTag r seg where
 	go (t, r) = let x = getRestSegments r in
 		-- anything with a tag is a directory
 		if isJust t then Just . map entry $ fromMaybe [] x

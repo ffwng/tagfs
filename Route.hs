@@ -10,6 +10,7 @@ import Data.Maybe
 import Data.Map (Map)
 import qualified Data.Map as M
 import Data.List
+import System.IO.Unsafe
 
 import Text.PrettyPrint
 
@@ -53,21 +54,17 @@ tag = liftF . new_ (\t -> Tag t ())
 noRoute :: Route t a
 noRoute = liftF $ new_ (\() -> NoRoute) ()
 
-runRoute :: Route t a -> [String] -> IO (Maybe (Either (Maybe t) a))
-runRoute r s = do
-	r' <- routeToEnd r s
-	case r' of
-		Nothing -> return Nothing
-		Just (Left t) -> return $ Just (Left (fst t))
-		Just (Right a) -> return $ Just (Right a)
+runRoute :: Route t a -> [String] -> Maybe (Either (Maybe t) a)
+runRoute r s = case routeToEnd r s of
+	Nothing -> Nothing
+	Just (Left t) -> Just (Left (fst t))
+	Just (Right a) -> Just (Right a)
 
-runTag :: Route t a -> [String] -> IO (Maybe (Maybe (Maybe t, Route t a)))
-runTag r s = do
-	r' <- routeToEnd r s
-	case r' of
-		Nothing -> return Nothing
-		Just (Left e) -> return $ Just (Just e)
-		_ -> return $ Just Nothing
+runTag :: Route t a -> [String] -> Maybe (Maybe (Maybe t, Route t a))
+runTag r s = case routeToEnd r s of
+	Nothing -> Nothing
+	Just (Left e) -> Just (Just e)
+	_ -> Just Nothing
 
 getRestSegments :: Route t a -> Maybe [(FilePath, Maybe a)]
 getRestSegments = findEntries
@@ -108,27 +105,25 @@ foldRoute r = r
 		flatten ((Free (Choice as)):xs) = flatten as ++ flatten xs
 		flatten (x:xs) = x : flatten xs-}
 
-routeToEnd :: Route t a -> [String] -> IO (Maybe (Either (Maybe t, Route t a) a))
+routeToEnd :: Route t a -> [String] -> Maybe (Either (Maybe t, Route t a) a)
 routeToEnd r seg = go n seg r where
 	n = Nothing
-	go _ _ (Pure a) = return $ Just (Right a)
-	go t [] a = return $ Just (Left (t, a))
+	go _ _ (Pure a) = Just (Right a)
+	go t [] a = Just (Left (t, a))
 	go t seg (Free f) = go' t seg (read_ f)
 
 	go' :: Maybe t -> [String] -> Segment t (Route t a)
-		-> IO (Maybe (Either (Maybe t, Route t a) a))
+		-> Maybe (Either (Maybe t, Route t a) a)
 	go' _ xs (Tag t a) = go (Just t) xs a
 	go' _ (x:xs) (Match s a) | s == x = go n xs a
-	go' _ (x:xs) (Capture f) = case f x of
-		Nothing -> return Nothing
-		Just a -> go n xs a
+	go' _ (x:xs) (Capture f) = f x >>= go n xs
 	go' _ xs (Choice as) = find xs as --msum $ map (go n xs) as
-	go' _ _ _ = return Nothing
+	go' _ _ _ = Nothing
 
-	find xs = find' where
+	find xs = unsafePerformIO . find' where
 		find' [] = return Nothing
 		find' (a:as) = do
-			res <- go n xs a
+			let res = go n xs a
 			if isJust res then do
 				mapM reset_' as
 				return res
