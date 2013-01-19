@@ -27,4 +27,6 @@ resetReEval :: ReEval a -> IO ()
 resetReEval r = writeIORef (currentValue r) (unsharedValue (calculation r))
 
 instance Functor ReEval where
-	fmap f = newReEval f . readReEval
+	--fmap f = newReEval f . readReEval
+	fmap f (ReEval (Unshared f' x) v) = ReEval (Unshared (f . f') x) $
+		unsafePerformIO $ readIORef v >>= newIORef . f
