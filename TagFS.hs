@@ -36,7 +36,7 @@ isDir _ = False
 toRoute :: (FilePath -> Entry) -> FilePath -> Route Dir Entry
 toRoute f name = match name >> return (f name)
 
-regularFile :: FilePath -> Route Dir Entry
+regularFile :: FilePath -> Route FilePath Dir Entry
 regularFile = toRoute RegularFile
 
 dir :: Dir -> Route Dir ()
@@ -50,7 +50,7 @@ data FSStatus = FSStatus { tagSet :: TagSet, visited :: [Tag], predicate :: Set 
 makeStatus :: TagSet -> FSStatus
 makeStatus ts = FSStatus ts [] allTags
 
-type RouteBuilder = StateT FSStatus (Route Dir)
+type RouteBuilder = StateT FSStatus (Route FilePath Dir)
 
 choice_ :: [RouteBuilder a] -> RouteBuilder a
 choice_ l = do
@@ -165,20 +165,17 @@ route :: Route Dir Entry -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg where
 
 route' :: Route Dir Entry -> [FilePath] -> Maybe (Either Dir Entry)
-route' r seg = (fmap $ mapLeft (fromMaybe Dir)) $ runRoute r seg where
-	mapLeft :: (a -> c) -> Either a b -> Either c b
-	mapLeft f (Left x) = Left (f x)
-	mapLeft _ (Right r) = Right r
+route' r seg = case runRoute r seg of
+	(Just (e, _), _) -> Just $ Right e
+	(_, (_, Just t, _)) -> Just $ Left t
+	_ -> Nothing
 
 routeDir :: Route Dir Entry -> FilePath -> Maybe (Maybe [Entry])
 routeDir r p = let seg = split p in routeDir' r seg
 
 routeDir' :: Route Dir Entry -> [FilePath] -> Maybe (Maybe [Entry])
-routeDir' r seg = fmap (>>= go) $ runTag r seg where
-	go (t, r) = let x = getRestSegments r in
-		-- anything with a tag is a directory
-		if isJust t then Just . map entry $ fromMaybe [] x
-		else map entry <$> x
-	entry (_, Just a) = a
-	entry (s, Nothing) = DirName s
+routeDir' r seg = case runRoute r seg of
+	(Just _, _) -> Just Nothing
+	
+	_ -> Nothing
 
