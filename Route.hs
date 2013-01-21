@@ -1,152 +1,79 @@
-{-# LANGUAGE DeriveFunctor #-}
 module Route where
 
-import ReEval
-
 import Control.Monad
-import Control.Monad.Trans.Free
+import Control.Monad.Trans
+import Control.Monad.Trans.Maybe
+import Control.Monad.Trans.State
+import Control.Monad.Writer
+import Control.Monad.Identity
 import Control.Applicative
+import Control.Arrow
+
+import Data.Monoid
 import Data.Maybe
-import Data.Map (Map)
-import qualified Data.Map as M
-import Data.List
-import System.IO.Unsafe
 
-import Text.PrettyPrint
+type Route s t a = StateT [s] (MaybeT (State (Maybe t, [s]))) a
 
-data Segment t a = Match String a
-	| Capture (String -> Maybe a)
-	| Choice [a]
-	| Tag t a
-	| NoRoute
-	deriving Functor
+tagMaybe :: Maybe t -> Route s t ()
+tagMaybe = lift . lift . modify .first . const
 
-type Route t = FreeT (Segment t) ReEval
-type RouteSegment t a = FreeF (Segment t) a (Route t a)
+tag :: t -> Route s t ()
+tag = tagMaybe . Just
 
-eval :: Route t a -> RouteSegment t a
-eval = readReEval . runFreeT
+clearTag :: Route s t ()
+clearTag = tagMaybe Nothing
 
-uneval :: RouteSegment t a -> Route t a
-uneval = FreeT . return
+expect :: [s] -> Route s t ()
+expect xs = lift . lift . modify . second $ const xs
 
-match :: String -> Route t ()
-match a = liftF $ Match a ()
+clearExpect :: Route s t ()
+clearExpect = expect []
 
-capture :: (String -> Maybe a) -> Route t a
-capture = liftF . Capture
+nextMaybe :: Route s t (Maybe s)
+nextMaybe = do
+	xs <- get
+	case xs of
+		p:ps -> put ps >> return (Just p)
+		_ -> noRoute
 
-captureBool :: (String -> Bool) -> Route t String
-captureBool f = capture (\a -> if f a then Just a else Nothing)
+next :: Route s t s
+next = maybe noRoute return =<< nextMaybe
 
-choice :: (Eq t, Ord t) => [Route t a] -> Route t a
-choice = foldChoice
+match :: Eq s => s -> Route s t ()
+match s = do
+	expect [s]
+	s' <- next
+	clearExpect
+	if s == s' then return ()
+	else noRoute
 
-rawChoice :: [Route t a] -> Route t a
-rawChoice = join . liftF . Choice
+capture :: (s -> Maybe a) -> Route s t a
+capture f = do
+	clearExpect
+	s <- next
+	maybe noRoute return $ f s
 
-tag :: t -> Route t ()
-tag t = liftF $ Tag t ()
+captureBool :: (s -> Bool) -> Route s t s
+captureBool f = capture (\s -> if f s then Just s else Nothing)
 
-noRoute :: Route t a
-noRoute = liftF NoRoute
+noRoute :: Route s t a
+noRoute = mzero
 
-runRoute :: Route t a -> [String] -> Maybe (Either (Maybe t) a)
-runRoute r s = case routeToEnd r s of
-	Nothing -> Nothing
-	Just (Left t) -> Just (Left (fst t))
-	Just (Right a) -> Just (Right a)
+choice :: Eq s => [Route s t a] -> Route s t a
+choice rs = do
+	s <- get
+	let res = map (`runRoute` s) rs
+	-- gather expected from all routes, tag and value from first route
+	let expected = concatMap (snd . snd) res
+	expect expected
+	let consumed (r, (_, s')) = isJust r || s' /= s
+	let succs = filter consumed res
+	case succs of
+		(Just (a, s'), (t, _)):_ -> do
+			tagMaybe t
+			put s'
+			return a
+		_ -> noRoute
 
-runTag :: Route t a -> [String] -> Maybe (Maybe (Maybe t, Route t a))
-runTag r s = case routeToEnd r s of
-	Nothing -> Nothing
-	Just (Left e) -> Just (Just e)
-	_ -> Just Nothing
-
-getRestSegments :: Route t a -> Maybe [(FilePath, Maybe a)]
-getRestSegments = findEntries
-
-foldChoice :: (Eq t, Ord t) => [Route t a] -> Route t a
-foldChoice rs = case map compose . groupBy same . sortBy comp . flatten $ map eval rs of
-	[] -> noRoute
-	[x] -> x
-	xs -> rawChoice xs
-	where
-		same (Free (Match s1 _)) (Free (Match s2 _)) = s1 == s2
-		same (Free (Tag t1 _)) (Free (Tag t2 _)) = t1 == t2
-		same _ _ = False
-
-		-- groups tags and matches
-		comp (Free (Tag t1 _)) (Free (Tag t2 _)) = compare t1 t2
-		comp (Free (Tag _ _)) _ = LT
-		comp (Free (Match s1 _)) (Free (Match s2 _)) = compare s1 s2
-		comp (Free (Match _ _)) (Free (Tag _ _)) = GT
-		comp (Free (Match _ _)) _ = LT
-		comp _ _ = EQ
-
-		compose :: [RouteSegment t a] -> Route t a
-		compose [] = noRoute
-		compose [x] = uneval x
-		compose xs@(Free (Match p _) : _) = uneval $ Free (Match p (rawChoice
-			[ n | (Free (Match _ n)) <- xs]))
-		compose xs@(Free (Tag t _) : _) = uneval $ Free (Tag t (rawChoice
-			[ n | (Free (Tag _ n)) <- xs]))
-		compose _ = error "compose: assertion failed"
-		
-		flatten :: [RouteSegment t a] -> [RouteSegment t a]
-		flatten [] = []
-		flatten ((Free (Choice as)):xs) = flatten (map eval as) ++ flatten xs
-		flatten (x:xs) = x : flatten xs
-
-routeToEnd :: Route t a -> [String] -> Maybe (Either (Maybe t, Route t a) a)
-routeToEnd r seg = go n seg $ eval r where
-	n = Nothing
-
-	go :: Maybe t -> [String] -> RouteSegment t a -> Maybe (Either (Maybe t, Route t a) a)
-	go _ _ (Pure a) = Just (Right a)
-	go _ xs (Free (Tag t a)) = go (Just t) xs $ eval a
-	go t [] a = Just (Left (t, uneval a))
-	go _ (x:xs) (Free (Match s a)) | s == x = go n xs $ eval a
-	go _ (x:xs) (Free (Capture f)) = f x >>= go n xs . eval
-	go _ xs (Free (Choice as)) = unsafePerformIO $ find xs as
-	go _ _ _ = n
-
-	find :: [String] -> [Route t a] -> IO (Maybe (Either (Maybe t, Route t a) a))
-	find _ [] = return Nothing
-	find xs (a:as) = do
-		let res = go n xs $ eval a
-		if isJust res then do
-			mapM (resetReEval . runFreeT) as
-			return res
-		else do
-			resetReEval $ runFreeT a
-			find xs as
-
-getPure :: Route t a -> Maybe a
-getPure r = go $ eval r where
-	go (Pure a) = Just a
-	go (Free f) = case f of
-		Choice as -> msum $ map getPure as
-		_ -> Nothing
-
-findEntriesMap :: Route t a -> Maybe (Map String (Maybe a))
-findEntriesMap r = go $ eval r where
-	go (Free (Match s a)) = Just $ M.singleton s (getPure a)
-	go (Free (Choice a)) = Just . M.unions . catMaybes $ map findEntriesMap a
-	go (Free (Tag _ a)) = findEntriesMap a
-	go _ = Nothing
-
-findEntries :: Route t a -> Maybe [(String, Maybe a)]
-findEntries r = M.toList <$> findEntriesMap r
-
-{-prettyRoute :: (Show t, Show a) => Int -> Route t a -> Doc
-prettyRoute _ (Pure a) = text "return" <+> text (show a)
-prettyRoute 0 _ = text ""
-prettyRoute n (Free (Match p next)) = text "match"
-	<+> doubleQuotes (text p) $+$ prettyRoute (n-1) next
-prettyRoute n (Free (Capture f)) = text "capture <func>"
-	<> text (show (fmap (prettyRoute (n-1)) (f "")))
-prettyRoute n (Free (Choice cs)) = text "choice"
-	<+> (cat $ map (\r -> text "do" <+> (nest 1 $ prettyRoute (n-1) r)) cs)
-prettyRoute n (Free (Tag t a)) = text "tag" <+> text (show t) $+$ prettyRoute (n-1) a
-prettyRoute n (Free NoRoute) = text "no route"-}
+runRoute :: Route s t a -> [s] -> (Maybe (a, [s]), (Maybe t, [s]))
+runRoute r s = runIdentity . (`runStateT` (Nothing, [])) . runMaybeT $ runStateT r s
