@@ -19,4 +19,6 @@ dir2 = do
 
 dir3 :: Route Int
 dir3 = do
+	match "dir3"
+	match "dir3a"
 	choice [dir1, return 3]
