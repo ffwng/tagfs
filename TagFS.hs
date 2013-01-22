@@ -1,6 +1,7 @@
 module TagFS where
 
-import Route
+import Route hiding (Route, route)
+import qualified Route as R
 import TagSet
 
 import System.IO
@@ -16,7 +17,6 @@ import qualified Data.Set as S
 
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
-	| DirName FilePath
 	deriving (Show, Eq)
 
 data Dir = TagDir Tag
@@ -24,23 +24,17 @@ data Dir = TagDir Tag
 	| Dir
 	deriving (Show, Ord, Eq)
 
-getPath :: Entry -> FilePath
-getPath (RegularFile p) = p
-getPath (TagFile _ _ p) = p
-getPath (DirName p) = p
+type Route = R.Route FilePath (Maybe Dir)
 
-isDir :: Entry -> Bool
-isDir (DirName _) = True
-isDir _ = False
+getEntryPath :: Entry -> FilePath
+getEntryPath (RegularFile p) = p
+getEntryPath (TagFile _ _ p) = p
 
-toRoute :: (FilePath -> Entry) -> FilePath -> Route Dir Entry
-toRoute f name = match name >> return (f name)
+toRoute :: (FilePath -> Entry) -> FilePath -> Route Entry
+toRoute f name = match Nothing name >> return (f name)
 
-regularFile :: FilePath -> Route FilePath Dir Entry
+regularFile :: FilePath -> Route Entry
 regularFile = toRoute RegularFile
-
-dir :: Dir -> Route Dir ()
-dir = tag
 
 allTags :: Set Tag -> Bool
 allTags = const True
@@ -50,7 +44,7 @@ data FSStatus = FSStatus { tagSet :: TagSet, visited :: [Tag], predicate :: Set 
 makeStatus :: TagSet -> FSStatus
 makeStatus ts = FSStatus ts [] allTags
 
-type RouteBuilder = StateT FSStatus (Route FilePath Dir)
+type RouteBuilder a = StateT FSStatus Route a
 
 choice_ :: [RouteBuilder a] -> RouteBuilder a
 choice_ l = do
@@ -65,7 +59,7 @@ modifyVisited f = modify (\s -> s { visited = f (visited s) })
 modifyPredicate :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> RouteBuilder ()
 modifyPredicate f = modify (\s -> s { predicate = f (predicate s) })
 
-buildBaseRoute :: TagSet -> Route Dir Entry
+buildBaseRoute :: TagSet -> Route Entry
 buildBaseRoute ts = evalStateT buildSubRoute (makeStatus ts)
 
 buildSubRoute :: RouteBuilder Entry
@@ -96,9 +90,9 @@ logicalDirsRoute tag = do
 		[ logicalTagRoute (\f s -> f s && S.member tag s) "and" tag
 		, logicalTagRoute (\f s -> f s || S.member tag s) "or" tag
 		, logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
-		, lift (match "and")
+		, lift (match Nothing "and")
 			>> logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
-		, lift (match "or")
+		, lift (match Nothing "or")
 			>> logicalTagRoute (\f s -> f s || not (S.member tag s)) "not" tag
 		]
 
@@ -106,7 +100,7 @@ logicalDirsRoute tag = do
 logicalTagRoute :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> String -> Tag
 	-> RouteBuilder Entry
 logicalTagRoute f funcname tag = do
-	lift (match funcname)
+	lift (match Nothing funcname)
 	tagDir tag
 	modifyVisited (tag:)
 	modifyPredicate f
@@ -114,13 +108,10 @@ logicalTagRoute f funcname tag = do
 
 tagDir :: Tag -> RouteBuilder ()
 tagDir tag@(Simple n) = lift $ do
-	match n
-	dir $ TagDir tag
+	match (Just $ TagDir tag) n
 tagDir tag@(Extended n v) = lift $ do
-	match n
-	dir $ ExtendedBaseDir n
-	match v
-	dir $ TagDir tag
+	match (Just $ ExtendedBaseDir n) n
+	match (Just $ TagDir tag) v
 
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
@@ -134,7 +125,7 @@ tagFileExt = ".tags"
 
 tagFileRoute :: RouteBuilder Entry
 tagFileRoute = do
-	(name, path) <- lift $ capture getName
+	(name, path) <- lift $ capture Nothing getName
 	f <- gets predicate
 	ts <- gets tagSet
 	let files = queryFiles f ts
@@ -161,21 +152,44 @@ split p = split' (map f p) where
 split' :: FilePath -> [String]
 split' (p:ps) = splitDirectories ps
 
-route :: Route Dir Entry -> FilePath -> Maybe (Either Dir Entry)
-route r p = let seg = split p in route' r seg where
+route :: Route Entry -> FilePath -> Maybe (Either Dir Entry)
+route r p = let seg = split p in route' r seg
 
-route' :: Route Dir Entry -> [FilePath] -> Maybe (Either Dir Entry)
-route' r seg = case runRoute r seg of
-	(Just (e, _), _) -> Just $ Right e
-	(_, (_, Just t, _)) -> Just $ Left t
-	_ -> Nothing
+dirHelper :: Either (Maybe Dir) a -> Either Dir a
+dirHelper (Left e) = Left $ fromMaybe Dir e
+dirHelper (Right a) = Right a
 
-routeDir :: Route Dir Entry -> FilePath -> Maybe (Maybe [Entry])
+route' :: Route Entry -> [FilePath] -> Maybe (Either Dir Entry)
+route' r seg = dirHelper <$> R.route Nothing r seg
+
+routeDir :: Route Entry -> FilePath -> Maybe (Maybe [(FilePath, Either Dir Entry)])
 routeDir r p = let seg = split p in routeDir' r seg
 
-routeDir' :: Route Dir Entry -> [FilePath] -> Maybe (Maybe [Entry])
-routeDir' r seg = case runRoute r seg of
-	(Just _, _) -> Just Nothing
-	
+routeDir' :: Route Entry -> [FilePath]
+	-> Maybe (Maybe [(FilePath, Either Dir Entry)])
+routeDir' r seg = case getBranch r seg of
+	Nothing -> Nothing
+	Just (Right _) -> Just Nothing
+	Just (Left es) -> Just . Just $ map (\(s, e) -> (s, dirHelper e)) es
+
+{-route :: Route a -> FilePath -> Maybe (Either Dir Entry)
+route r p = let seg = split p in route' r seg where
+
+route' :: Route a -> [FilePath] -> Maybe (Either Dir Entry)
+route' r seg = case runRoute r seg of
+	(Just e, _, _) -> Just $ Right e
+	(_, Just t, _) -> Just $ Left t
 	_ -> Nothing
 
+routeDir :: Route a -> FilePath -> Maybe (Maybe [Leaf])
+routeDir r p = let seg = split p in routeDir' r seg
+
+routeDir' :: Route a -> [FilePath] -> Maybe (Maybe [Leaf])
+routeDir' r seg = case runRoute r seg of
+	(Just _, _, _) -> Just Nothing
+	(_, _, Just e) -> Just . Just $ map leaf e
+	_ -> Nothing
+	where
+		leaf (p, Nothing) = File p
+		leaf (p, _) = Dir p
+-}

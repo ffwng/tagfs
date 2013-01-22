@@ -1,119 +1,68 @@
-module Route (
-	Route,
-	matchBranch,
-	matchLeaf,
-	capture,
-	choice,
-	noRoute,
-	runRoute,
-	runRawRoute
-) where
+{-# LANGUAGE DeriveFunctor, TupleSections #-}
+module Route where
 
 import Control.Monad
-import Control.Monad.Trans
-import Control.Monad.Trans.Maybe
-import Control.Monad.Trans.State
-import Control.Monad.Writer
-import Control.Monad.Identity
+import Control.Monad.Free
 import Control.Applicative
-import Control.Arrow
-
-import Data.Monoid
 import Data.Maybe
+import Data.List
+import Data.Function
 
-data RouteStatus s t = RouteStatus
-	{ consumed :: Bool
-	, expecting :: Maybe [(s, Maybe (Maybe t))]
-	}
-	deriving (Show)
+data Segment s t a =
+	  Match t s a
+	| Capture t (s -> Maybe a)
+	| Choice [a]
+	| NoRoute
+	deriving (Functor)
 
-type Route s t a = StateT [s] (MaybeT (State (RouteStatus s t))) a
+type Route s t = Free (Segment s t)
 
-consume :: Route s t ()
-consume = setConsumed True
+{-routeToEnd :: Eq s => t -> Route s t a -> [s] -> Maybe (t, Route s t a)
+routeToEnd t = flip (go t) where
+	go :: Eq s => t -> [s] -> Route s t a -> Maybe (t, Route s t a)
+	go t [] r = Just (t, r)
+	go _ (x:xs) (Free (Match t s a)) | s == x = go t xs a
+	go _ (x:xs) (Free (Capture t f)) = go t xs =<< f x
+	go t xs (Free (Choice as)) = msum $ map (go t xs) as
+	go _ _ _ = Nothing-}
 
-setConsumed :: Bool -> Route s t ()
-setConsumed b = lift . lift $ modify (\s -> s { consumed = b })
+route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t a)
+route t r s = get t s r where
+	get _ [] (Pure a) = Just $ Right a
+	get t [] _ = Just $ Left t
+	get t xs (Free (Choice as)) = msum $ map (get t xs) as
+	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
+	get _ (x:xs) (Free (Capture t f)) = get t xs =<< f x
+	get _ _ _ = Nothing
 
-expect :: [(s, Maybe (Maybe t))] -> Route s t ()
-expect xs = setExpecting (Just xs)
+getBranch :: Eq s => Route s t a -> [s] -> Maybe (Either [(s, Either t a)] a)
+getBranch r s = get s r where
+	get [] (Pure a) = Just $ Right a
+	get (x:xs) (Free (Match _ s a)) | s == x = get xs a
+	get [] (Free (Match t s a)) = Just $ Left [(s, getPure t a)]
+	get (x:xs) (Free (Capture _ f)) = get xs =<< f x
+	get [] (Free (Capture _ _)) = Just $ Left []
+	get xs (Free (Choice as)) = interpret' . catMaybes $ map (get xs) as
+	get _ _ = Nothing
 
-clearExpect :: Route s t ()
-clearExpect = setExpecting Nothing
+	interpret' [] = Nothing
+	interpret' xs = Just $ interpret [] xs
+	
+	interpret acc [] = Left $ nubBy ((==) `on` fst) acc
+	interpret acc ((Left x):xs) = interpret (x ++ acc) xs
+	interpret _ ((Right a):_) = Right a
 
-setExpecting :: Maybe [(s, Maybe (Maybe t))] -> Route s t ()
-setExpecting x = lift . lift $ modify (\s -> s { expecting = x })
+	getPure _ (Pure a) = Right a
+	getPure t _ = Left t
 
-nextMaybe :: Route s t (Maybe s)
-nextMaybe = do
-	xs <- get
-	case xs of
-		p:ps -> do
-			put ps
-			return (Just p)
-		_ -> noRoute
+match :: t -> s -> Route s t ()
+match t s = liftF (Match t s ())
 
-next :: Route s t s
-next = maybe noRoute return =<< nextMaybe
+capture :: t -> (s -> Maybe a) -> Route s t a
+capture t f = liftF (Capture t f)
 
-match :: Eq s => Maybe (Maybe t) -> s -> Route s t ()
-match t s = do
-	expect [(s, t)]
-	s' <- next
-	clearExpect
-	if s == s' then consume >> return ()
-	else noRoute
-
-matchBranch :: Eq s => Maybe t -> s -> Route s t ()
-matchBranch t = match (Just t)
-
-matchLeaf :: Eq s => s -> Route s t ()
-matchLeaf = match Nothing
-
-capture :: (s -> Maybe a) -> Route s t a
-capture f = do
-	expect []
-	s <- next
-	clearExpect
-	case f s of
-		Just a -> consume >> return a
-		_ -> noRoute
-
-captureBool :: (s -> Bool) -> Route s t s
-captureBool f = capture (\s -> if f s then Just s else Nothing)
+choice :: [Route s t a] -> Route s t a
+choice rs = join $ liftF (Choice rs)
 
 noRoute :: Route s t a
-noRoute = mzero
-
-concatMaybe :: [[a]] -> Maybe [a]
-concatMaybe [] = Nothing
-concatMaybe xs = Just $ concat xs
-
-choice :: Eq s => [Route s t a] -> Route s t a
-choice rs = do
-	s <- get
-	let res = map (`runRawRoute` s) rs
-	-- gather expected from all routes, tag and value from first route
-	let expected = concatMaybe . catMaybes $ map (expecting . snd) res
-	setExpecting expected
-	let pred (r, status) = isJust r || consumed status
-	let succs = filter pred res
-	case succs of
-		(r, status):_ -> do
-			setConsumed (consumed status)
-			case r of
-				Just (a, s') -> do
-					put s'
-					return a
-				_ -> noRoute
-		_ -> noRoute
-
-runRawRoute :: Route s t a -> [s] -> (Maybe (a, [s]), RouteStatus s t)
-runRawRoute r s = runIdentity . (`runStateT` (RouteStatus False Nothing)) . runMaybeT
-	$ runStateT r s
-
-runRoute :: Route s t a -> [s] -> (Maybe a, Maybe [(s, Maybe (Maybe t))])
-runRoute r s = f $ runRawRoute r s where
-	f (res, status) = (g res, expecting status)
-	g (Just (a, x)) | null x = Just a
-	g _ = Nothing
+noRoute = liftF NoRoute
