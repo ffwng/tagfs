@@ -18,15 +18,6 @@ data Segment s t a =
 
 type Route s t = Free (Segment s t)
 
-{-routeToEnd :: Eq s => t -> Route s t a -> [s] -> Maybe (t, Route s t a)
-routeToEnd t = flip (go t) where
-	go :: Eq s => t -> [s] -> Route s t a -> Maybe (t, Route s t a)
-	go t [] r = Just (t, r)
-	go _ (x:xs) (Free (Match t s a)) | s == x = go t xs a
-	go _ (x:xs) (Free (Capture t f)) = go t xs =<< f x
-	go t xs (Free (Choice as)) = msum $ map (go t xs) as
-	go _ _ _ = Nothing-}
-
 route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
 route t r s = get t s r where
 	get t [] (Pure a) = Just $ Right (a, t)
