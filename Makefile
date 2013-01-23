@@ -3,7 +3,7 @@
 .PHONY: clean mount umount
 
 MAIN_SOURCES :=   \
-	FSMain.hs       \
+	Main.hs       \
 	Route.hs      \
 	TagFS.hs      \
 	TagSet.hs     \
@@ -11,23 +11,23 @@ MAIN_SOURCES :=   \
 	Config.hs
 
 Main: $(MAIN_SOURCES)
-	ghc -O2 -threaded FSMain.hs
+	ghc -O2 -threaded Main.hs
 
 clean:
 	rm -f *.hi *.o Main
 
-mount: FSMain
-	./FSMain test
+mount: Main
+	./Main test
 
 umount:
 	fusermount -u test
 
-debug: FSMain
-	./FSMain -d test
+debug: Main
+	./Main -d test
 
-foreground: FSMain
-	./FSMain -f test
+foreground: Main
+	./Main -f test
 
-remount: FSMain
+remount: Main
 	fusermount -u test
-	./FSMain test
+	./Main test

@@ -1,5 +1,5 @@
 *.swp
 *.hi
 *.o
-FSMain
+Main
 test/
