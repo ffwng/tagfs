@@ -155,22 +155,22 @@ split' (p:ps) = splitDirectories ps
 route :: Route Entry -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg
 
-dirHelper :: Either (Maybe Dir) a -> Either Dir a
-dirHelper (Left e) = Left $ fromMaybe Dir e
-dirHelper (Right a) = Right a
+helper :: Either (Maybe Dir) (a, t) -> Either Dir a
+helper (Left e) = Left $ fromMaybe Dir e
+helper (Right (a,_)) = Right a
 
 route' :: Route Entry -> [FilePath] -> Maybe (Either Dir Entry)
-route' r seg = dirHelper <$> R.route Nothing r seg
+route' r seg = helper <$> R.route Nothing r seg
 
 routeDir :: Route Entry -> FilePath -> Maybe (Maybe [(FilePath, Either Dir Entry)])
 routeDir r p = let seg = split p in routeDir' r seg
 
 routeDir' :: Route Entry -> [FilePath]
 	-> Maybe (Maybe [(FilePath, Either Dir Entry)])
-routeDir' r seg = case getBranch r seg of
+routeDir' r seg = case getBranch Nothing r seg of
 	Nothing -> Nothing
 	Just (Right _) -> Just Nothing
-	Just (Left es) -> Just . Just $ map (\(s, e) -> (s, dirHelper e)) es
+	Just (Left es) -> Just . Just $ map (\(s, e) -> (s, helper e)) es
 
 {-route :: Route a -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg where

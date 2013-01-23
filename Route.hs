@@ -7,6 +7,7 @@ import Control.Applicative
 import Data.Maybe
 import Data.List
 import Data.Function
+import Data.Ord
 
 data Segment s t a =
 	  Match t s a
@@ -26,33 +27,40 @@ routeToEnd t = flip (go t) where
 	go t xs (Free (Choice as)) = msum $ map (go t xs) as
 	go _ _ _ = Nothing-}
 
-route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t a)
+route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
 route t r s = get t s r where
-	get _ [] (Pure a) = Just $ Right a
+	get t [] (Pure a) = Just $ Right (a, t)
 	get t [] _ = Just $ Left t
 	get t xs (Free (Choice as)) = msum $ map (get t xs) as
 	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
 	get _ (x:xs) (Free (Capture t f)) = get t xs =<< f x
 	get _ _ _ = Nothing
 
-getBranch :: Eq s => Route s t a -> [s] -> Maybe (Either [(s, Either t a)] a)
-getBranch r s = get s r where
-	get [] (Pure a) = Just $ Right a
-	get (x:xs) (Free (Match _ s a)) | s == x = get xs a
-	get [] (Free (Match t s a)) = Just $ Left [(s, getPure t a)]
-	get (x:xs) (Free (Capture _ f)) = get xs =<< f x
-	get [] (Free (Capture _ _)) = Just $ Left []
-	get xs (Free (Choice as)) = interpret' . catMaybes $ map (get xs) as
-	get _ _ = Nothing
+-- nubs a sorted list
+sortedNubBy :: (a -> a -> Bool) -> [a] -> [a]
+sortedNubBy _ [] = []
+sortedNubBy _ [x] = [x]
+sortedNubBy f (a:b:xs) | f a b = sortedNubBy f (b:xs)
+sortedNubBy f (a:b:xs) = a : sortedNubBy f (b:xs)
+
+getBranch :: Ord s => t -> Route s t a -> [s] -> Maybe (Either [(s, Either t (a, t))] (a, t))
+getBranch t r s = get t s r where
+	get t [] (Pure a) = Just $ Right (a, t)
+	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
+	get _ [] (Free (Match t s a)) = Just $ Left [(s, getPure t a)]
+	get _ (x:xs) (Free (Capture t f)) = get t xs =<< f x
+	get _ [] (Free (Capture _ _)) = Just $ Left []
+	get t xs (Free (Choice as)) = interpret' . catMaybes $ map (get t xs) as
+	get _ _ _ = Nothing
 
 	interpret' [] = Nothing
 	interpret' xs = Just $ interpret [] xs
 	
-	interpret acc [] = Left $ nubBy ((==) `on` fst) acc
+	interpret acc [] = Left . sortedNubBy ((==) `on` fst) $ sortBy (comparing fst) acc
 	interpret acc ((Left x):xs) = interpret (x ++ acc) xs
 	interpret _ ((Right a):_) = Right a
 
-	getPure _ (Pure a) = Right a
+	getPure t (Pure a) = Right (a, t)
 	getPure t _ = Left t
 
 match :: t -> s -> Route s t ()
