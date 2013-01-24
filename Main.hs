@@ -33,6 +33,8 @@ import qualified Data.Map as M
 import Data.Maybe
 import Control.Exception
 import Control.Monad
+import System.Directory (getDirectoryContents, doesFileExist)
+import Control.Arrow
 
 
 data Status = Status
@@ -319,6 +321,9 @@ ts = fromFiles [Simple "bar", Extended "loc" "hier", Extended "loc" "da"]
 mapping = M.fromList [("file1", "/tmp/file1"), ("file2", "/tmp/file2"),
 	("file3", "/tmp/file3")]
 -- ^ for testing purposes only
+
+getFiles :: FilePath -> IO [(FilePath, FilePath)]
+getFiles p = filterM (doesFileExist . fst) . map ((p </>) &&& id) =<< getDirectoryContents p
 
 main = do
 	status <- newIORef $ newStatus ts mapping
