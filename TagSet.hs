@@ -10,6 +10,8 @@ import Data.List hiding (any)
 import Control.Applicative
 import Control.Arrow (second)
 import Data.Foldable (any)
+import Data.Function
+import Data.Ord
 
 data Tag = Simple String | Extended String String deriving (Eq, Ord, Show)
 data TagSet = TagSet (Set Tag) (Map FilePath (Set Tag))
@@ -60,3 +62,17 @@ createTag t (TagSet x ts) = TagSet (S.insert t x) ts
 
 wipeTag :: Tag -> TagSet -> TagSet
 wipeTag t (TagSet x ts) = TagSet (S.delete t x) $ M.map (S.delete t) ts
+
+
+-- serialization
+
+groupFirst :: Eq a => [(a,b)] -> [(a, [b])]
+groupFirst = map f . groupBy ((==) `on` fst) where
+	f l = (fst $ head l, map snd l)
+
+toAssocList :: TagSet -> [(FilePath, Tag)]
+toAssocList (TagSet _ m) = [(p,t) | (p, s) <- M.toList m, t <- S.toList s]
+
+fromAssocList :: [Tag] -> [(FilePath, Tag)] -> TagSet
+fromAssocList t = TagSet (S.fromList t) . M.fromList . map (second S.fromList)
+	. groupFirst . sortBy (comparing fst)
