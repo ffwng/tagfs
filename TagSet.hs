@@ -1,3 +1,4 @@
+{-# LANGUAGE TupleSections #-}
 module TagSet where
 
 import Prelude hiding (any)
@@ -70,9 +71,9 @@ groupFirst :: Eq a => [(a,b)] -> [(a, [b])]
 groupFirst = map f . groupBy ((==) `on` fst) where
 	f l = (fst $ head l, map snd l)
 
-toAssocList :: TagSet -> [(FilePath, Tag)]
-toAssocList (TagSet _ m) = [(p,t) | (p, s) <- M.toList m, t <- S.toList s]
+getTagAssocs :: TagSet -> [(FilePath, Tag)]
+getTagAssocs (TagSet _ m) = [(p,t) | (p, s) <- M.toList m, t <- S.toList s]
 
-fromAssocList :: [Tag] -> [(FilePath, Tag)] -> TagSet
-fromAssocList t = TagSet (S.fromList t) . M.fromList . map (second S.fromList)
-	. groupFirst . sortBy (comparing fst)
+craftTagSet :: [Tag] -> [FilePath] -> [(FilePath, Tag)] -> TagSet
+craftTagSet t f a = let start = TagSet (S.fromList t) (M.fromList $ map (,S.empty) f)
+	in foldr (uncurry $ flip addTag) start a

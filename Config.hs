@@ -8,42 +8,79 @@ import Database.SQLite.Simple.FromField
 import Database.SQLite.Simple.ToField
 import qualified Data.Text as T
 import Control.Arrow
+import Data.List
+import Data.Maybe
+
+import GHC.Exts (fromString)
 
 import TagSet (Tag(..))
 
-toRepr :: (FilePath, Tag) -> (T.Text, String, Maybe String)
-toRepr (p, t) = (T.pack p, n, v) where (n, v) = tagToRepr t
+tagToRepr :: Int -> Tag -> (Int, String, Maybe String)
+tagToRepr i (Simple n) = (i, n, Nothing)
+tagToRepr i (Extended n v) = (i, n, Just v)
 
-fromRepr :: (T.Text, String, Maybe String) -> (FilePath, Tag)
-fromRepr (t, n, v) = (T.unpack t, tag) where tag = tagFromRepr (n, v)
+tagFromRepr :: (Int, String, Maybe String) -> Tag
+tagFromRepr (_, n, Nothing) = Simple n
+tagFromRepr (_, n, Just v) = Extended n v
 
-tagToRepr :: Tag -> (String, Maybe String)
-tagToRepr (Simple n) = (n, Nothing)
-tagToRepr (Extended n v) = (n, Just v)
+fileToRepr :: Int -> FilePath -> (Int, FilePath)
+fileToRepr = (,)
 
-tagFromRepr :: (String, Maybe String) -> Tag
-tagFromRepr (n, Nothing) = Simple n
-tagFromRepr (n, Just v) = Extended n v
+fileFromRepr :: (Int, FilePath) -> FilePath
+fileFromRepr = snd
 
-data Config = Config { mapping :: [(FilePath, Tag)], tags :: [Tag] }
+data Config = Config { tags :: [Tag], files :: [FilePath], mapping :: [(FilePath, Tag)] }
+	deriving (Show)
 
-createEmptyTable :: Connection -> IO ()
-createEmptyTable c = do
-	execute_ c "DROP TABLE IF EXISTS files"
-	execute_ c
-		"CREATE TABLE files (id INTEGER PRIMARY KEY, path TEXT, name TEXT, value TEXT)"
-	execute_ c "CREATE TABLE tags (id INTEGER PRIMARY KEY, name TEXT, value TEXT)"
+createEmptyTable :: Connection -> String -> String -> IO ()
+createEmptyTable c name rows = do
+	execute_ c . fromString $ "DROP TABLE IF EXISTS " ++ name
+	execute_ c . fromString $ "CREATE TABLE " ++ name ++ " (" ++ rows ++ ")"
+
+createEmptyTables :: Connection -> IO ()
+createEmptyTables c = do
+	createEmptyTable c "tags" "id INTEGER PRIMARY KEY, name TEXT, value TEXT"
+	createEmptyTable c "files" "id INTEGER PRIMARY KEY, path TEXT"
+	createEmptyTable c "mapping" "fileid INTEGER, tagid INTEGER"
+
+safeIndex :: [a] -> Int -> Maybe a
+safeIndex [] _ = Nothing
+safeIndex (x:_) 0 = Just x
+safeIndex (x:xs) n = safeIndex xs $! (n-1)
+
+findElems :: [Tag] -> [FilePath] -> [(Int, Int)] -> [(FilePath, Tag)]
+findElems ts fs m = catMaybes $ map helper m where
+	helper (i1, i2) = do
+		f <- safeIndex fs i1
+		t <- safeIndex ts i2
+		return (f, t)
 
 readConfig :: FilePath -> IO Config
 readConfig s = withConnection s $ \c -> do
-	m <- map fromRepr <$> query_ c "SELECT path, name, value FROM files"
-	t <- map tagFromRepr <$> query_ c "SELECT name, value FROM tags"
-	return $ Config m t
+	fs <- map fileFromRepr <$> query_ c "SELECT id, path FROM files"
+	ts <- map tagFromRepr <$> query_ c "SELECT id, name, value FROM tags"
+	m <- query_ c "SELECT fileid, tagid FROM mapping"
+	let ms = findElems ts fs m
+	return $ Config ts fs ms
+
+findIds :: [Tag] -> [FilePath] -> [(FilePath, Tag)] -> [(Int, Int)]
+findIds ts fs ms = catMaybes $ map helper ms where
+	helper (f, t) = do
+		i1 <- elemIndex f fs
+		i2 <- elemIndex t ts
+		return (i1, i2)
 
 writeConfig :: Config -> FilePath -> IO ()
-writeConfig (Config fs ts) s = withConnection s $ \c -> do
-	createEmptyTable c
-	forM_ fs $ \f -> execute c
-		"INSERT INTO files (path, name, value) VALUES (?, ?, ?)" (toRepr f)
-	forM_ ts $ \t -> execute c
-		"INSERT INTO tags (name, value) VALUES (?, ?)" (tagToRepr t)
+writeConfig (Config ts fs ms) s = withConnection s $ \c -> do
+	createEmptyTables c
+
+	let ms' = findIds ts fs ms
+	let ts' = zip [0..] ts
+	let fs' = zip [0..] fs
+
+	forM_ fs' $ \(i, f) -> execute c
+		"INSERT INTO files (id, path) VALUES (?, ?)" (fileToRepr i f)
+	forM_ ts' $ \(i, t) -> execute c
+		"INSERT INTO tags (id, name, value) VALUES (?, ?, ?)" (tagToRepr i t)
+	forM_ ms' $ \m -> execute c
+		"INSERT INTO mapping (fileid, tagid) VALUES (?, ?)" m
