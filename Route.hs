@@ -70,19 +70,19 @@ type Route s t = Free (Segment s t)
 	when given
 
 @
-	r :: Route String Char Int 
-	r = do
-		match 'a' "foo"
-		match 'b' "bar"
-		choice [match 'c' foobar >> return 0,
-			match 'd' "barfoo" >> match 'e' "barfoo2" >> return 1]
+r :: Route String Char Int 
+r = do
+	match \'a\' \"foo\"
+	match \'b\' \"bar\"
+	choice [match \'c\' foobar >> return 0,
+		match \'d\' \"barfoo\" >> match \'e\' \"barfoo2\" >> return 1]
 @
 
 	@r@ would consist of the following paths:
 
-	* ["foo", "bar", "foobar"] returning (0, 'c')
+	* [\"foo\", \"bar\", \"foobar\"] returning (0, \'c\')
 
-	* ["foo", "bar", "barfoo", "barfoo2"] returning (1, 'd')
+	* [\"foo\", \"bar\", \"barfoo\", \"barfoo2\"] returning (1, \'d\')
 
 -}
 route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
@@ -106,18 +106,19 @@ sortedNubBy f (a:b:xs) = a : sortedNubBy f (b:xs)
 	proper-prefix-case. In this case, instead of the tag of the last segment a
 	list [(s, Either t (a,t)] is returned, where each element represents possible
 	continuation of the route. The @s@ part indicates the next segment, the second
-	element of the tuple is either @Right (a, t)@ if this segment would finish the route
-	with element @a@ or @Left t@ if not. Either way, the @t@ represents the tag of the
-	next segment @s@.
+	element of the tuple is either @Right (a, t)@ if this segment would finish
+	the route with element @a@ or @Left t@ if not. Either way, the @t@ represents
+	the tag of the next segment @s@.
 
-	For example: if given @r@ like above, @getBranch 'x' r ["foo", "bar"] would be
-	@Just (Left [("foobar", Right (0, 'c')), ("barfoo", Left 'd')])@.
+	For example: if given @r@ like above, @getBranch \'x\' r [\"foo\", \"bar\"]@
+	would be @Just (Left [(\"foobar\", Right (0, \'c\')),
+	(\"barfoo\", Left \'d\')])@.
 
-	If the route actually succeedes, @Just (Right (a, t))@ is returned, @Nothing@, if it
-	fails.
+	If the route actually succeedes, @Just (Right (a, t))@ is returned, @Nothing@,
+	if it fails.
 
-	Note that this function is slower then @route@, so it should only be used, if the
-	continuation possibilities of a route are needed.
+	Note that this function is slower then @route@, so it should only be used,
+	if the continuation possibilities of a route are needed.
 -}
 getBranch :: Ord s => t -> Route s t a -> [s] -> Maybe (Either [(s, Either t (a, t))] (a, t))
 getBranch t r s = get t s r where
@@ -144,9 +145,9 @@ getBranch t r s = get t s r where
 match :: t -> s -> Route s t ()
 match t s = liftF (Match t s ())
 
--- | A route which matches based of @f@. If for the given segment, @f s@ is @Just a@,
---   a is returned, if it is @Nothing@, the route fails. The captured segment is tagged
---   with t.
+-- | A route which matches based of @f@. If for the given segment, @f s@ is
+--   @Just a@, @a@ is returned, if it is @Nothing@, the route fails.
+--   The captured segment is tagged with t.
 capture :: t -> (s -> Maybe a) -> Route s t a
 capture t f = liftF (Capture t f)
 
@@ -154,6 +155,6 @@ capture t f = liftF (Capture t f)
 choice :: [Route s t a] -> Route s t a
 choice rs = join $ liftF (Choice rs)
 
--- | A route which always fails.
+-- | A route, which always fails.
 noRoute :: Route s t a
 noRoute = liftF NoRoute
