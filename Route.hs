@@ -1,5 +1,10 @@
 {-# LANGUAGE DeriveFunctor, TupleSections #-}
-module Route where
+module Route (
+	Route,
+	route,
+	getBranch,
+	match, capture, choice, noRoute
+) where
 
 import Control.Monad
 import Control.Monad.Free
@@ -16,8 +21,70 @@ data Segment s t a =
 	| NoRoute
 	deriving (Functor)
 
+{- |
+	Represents a route.
+	
+	A @'Route' s t a@ provides a mapping from paths to values of type a. A /path/
+	is a list of segments of type @s@, whereby the last segment represents the value itself
+	and previous segments represent intermediate steps to get to this. The concept is
+	comparable to file system paths, where the segments are a path component, the last
+	segment is a file name, the privious segments are directories and the value is the
+	file itself.
+	
+	Each path segment is annotated with a tag of type @t@. This makes it possible to
+	determine and distinguish intermediate steps and handle routes which are not finished.
+
+	Therefore, one can think of a route as
+	@type Route s t a = [([(s, t)], a)]@, i.e. a list of paths consisting of segments
+	annotated with a tag and a value associated to this path.
+	The implementation uses a tree data structure, which has identical behaivor, but
+	offers better time and space usages.
+
+	If one does not wish to tag every element, @Maybe t'@ for some @t'@ can be used.
+	@()@ as @t@ would lead to no tags at all.
+-}
 type Route s t = Free (Segment s t)
 
+{- |
+	Routes a path in a route. The following cases may occur when doing this:
+
+	* The route contains the path. In this case @Just (Right (a,t))@ is returned,
+	  where @a@ is the value of the path and @t@ the tag of the last segment.
+
+	* The path is a proper prefix of a path in the route, i.e. the route has not
+	  finished. In this case, @Just (Left t)@ is returned, where @t@ is the tag
+	  of the last matched segment.
+
+	* The path in neither contained in the route, nor is it a proper prefix of
+	  some other route's path. In this case, @Nothing@ is returned.
+
+	If a path statisfies both of the former cases, the first one applicable is used.
+	In particular, if @s@ is already determined to be a proper prefix of some other
+	path, it is not checked whether @s@ is contained in the route itself.
+
+	The @t@ parameter represents the tag of the “base directory” (which cannot be
+	represented in the route itself with the above definition). It is only used
+	when @s == []@.
+
+	Routes provid a @Monad@ instance to make them easily composed. For instance
+	when given
+
+@
+	r :: Route String Char Int 
+	r = do
+		match 'a' "foo"
+		match 'b' "bar"
+		choice [match 'c' foobar >> return 0,
+			match 'd' "barfoo" >> match 'e' "barfoo2" >> return 1]
+@
+
+	@r@ would consist of the following paths:
+
+	* ["foo", "bar", "foobar"] returning (0, 'c')
+
+	* ["foo", "bar", "barfoo", "barfoo2"] returning (1, 'd')
+
+-}
 route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
 route t r s = get t s r where
 	get t [] (Pure a) = Just $ Right (a, t)
@@ -34,6 +101,24 @@ sortedNubBy _ [x] = [x]
 sortedNubBy f (a:b:xs) | f a b = sortedNubBy f (b:xs)
 sortedNubBy f (a:b:xs) = a : sortedNubBy f (b:xs)
 
+{- |
+	Routes a path in a route. It behaves exactly as 'route', except for the
+	proper-prefix-case. In this case, instead of the tag of the last segment a
+	list [(s, Either t (a,t)] is returned, where each element represents possible
+	continuation of the route. The @s@ part indicates the next segment, the second
+	element of the tuple is either @Right (a, t)@ if this segment would finish the route
+	with element @a@ or @Left t@ if not. Either way, the @t@ represents the tag of the
+	next segment @s@.
+
+	For example: if given @r@ like above, @getBranch 'x' r ["foo", "bar"] would be
+	@Just (Left [("foobar", Right (0, 'c')), ("barfoo", Left 'd')])@.
+
+	If the route actually succeedes, @Just (Right (a, t))@ is returned, @Nothing@, if it
+	fails.
+
+	Note that this function is slower then @route@, so it should only be used, if the
+	continuation possibilities of a route are needed.
+-}
 getBranch :: Ord s => t -> Route s t a -> [s] -> Maybe (Either [(s, Either t (a, t))] (a, t))
 getBranch t r s = get t s r where
 	get t [] (Pure a) = Just $ Right (a, t)
@@ -54,14 +139,21 @@ getBranch t r s = get t s r where
 	getPure t (Pure a) = Right (a, t)
 	getPure t _ = Left t
 
+-- | A route which matches the segment @s@ tagged with @t@. If an other segment is provided,
+--   the route fails.
 match :: t -> s -> Route s t ()
 match t s = liftF (Match t s ())
 
+-- | A route which matches based of @f@. If for the given segment, @f s@ is @Just a@,
+--   a is returned, if it is @Nothing@, the route fails. The captured segment is tagged
+--   with t.
 capture :: t -> (s -> Maybe a) -> Route s t a
 capture t f = liftF (Capture t f)
 
+-- | Propes a list of routes and takes the first one, that does not fail.
 choice :: [Route s t a] -> Route s t a
 choice rs = join $ liftF (Choice rs)
 
+-- | A route which always fails.
 noRoute :: Route s t a
 noRoute = liftF NoRoute
