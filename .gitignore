@@ -3,3 +3,4 @@
 *.o
 Main
 test/
+dist/
