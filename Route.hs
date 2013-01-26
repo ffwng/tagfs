@@ -26,7 +26,7 @@ data Segment s t a =
 	
 	A @'Route' s t a@ provides a mapping from paths to values of type a. A /path/
 	is a list of segments of type @s@, whereby the last segment represents the value itself
-	and previous segments represent intermediate steps to get to this. The concept is
+	and previous segments represent intermediate steps to get to it. The concept is
 	comparable to file system paths, where the segments are a path component, the last
 	segment is a file name, the privious segments are directories and the value is the
 	file itself.
@@ -37,10 +37,10 @@ data Segment s t a =
 	Therefore, one can think of a route as
 	@type Route s t a = [([(s, t)], a)]@, i.e. a list of paths consisting of segments
 	annotated with a tag and a value associated to this path.
-	The implementation uses a tree data structure, which has identical behaivor, but
-	offers better time and space usages.
+	The implementation uses a tree data structure, which has identical behavior, but
+	offers better time and space metrics.
 
-	If one does not wish to tag every element, @Maybe t'@ for some @t'@ can be used.
+	If one does not wish to tag every element, @'Maybe' t'@ for some @t'@ can be used.
 	@()@ as @t@ would lead to no tags at all.
 -}
 newtype Route s t a = Route { unRoute :: Free (Segment s t) a }
@@ -75,7 +75,7 @@ r :: Route String Char Int
 r = do
 	match \'a\' \"foo\"
 	match \'b\' \"bar\"
-	choice [match \'c\' foobar >> return 0,
+	choice [match \'c\' \"foobar\" >> return 0,
 		match \'d\' \"barfoo\" >> match \'e\' \"barfoo2\" >> return 1]
 @
 
