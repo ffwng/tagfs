@@ -46,6 +46,11 @@ data Segment s t a =
 newtype Route s t a = Route { unRoute :: Free (Segment s t) a }
 	deriving (Functor, Applicative, Monad)
 
+-- | Note: for more than two alternatives, 'choice' is more efficient than 'msum'.
+instance MonadPlus (Route s t) where
+	mzero = noRoute
+	mplus a b = choice [a, b]
+
 {- |
 	Routes a path in a route. The following cases may occur when doing this:
 
@@ -153,9 +158,10 @@ capture :: t -> (s -> Maybe a) -> Route s t a
 capture t f = Route $ liftF (Capture t f)
 
 -- | Propes a list of routes and takes the first one, that does not fail.
+--   Equivalent to 'msum', but more efficient.
 choice :: [Route s t a] -> Route s t a
 choice rs = Route . join $ liftF (Choice $ map unRoute rs)
 
--- | A route, which always fails.
+-- | A route, which always fails. Equivalent to 'mzero'.
 noRoute :: Route s t a
 noRoute = Route $ liftF NoRoute
