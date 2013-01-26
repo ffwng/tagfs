@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, TupleSections #-}
+{-# LANGUAGE DeriveFunctor, TupleSections, GeneralizedNewtypeDeriving #-}
 module Route (
 	Route,
 	route,
@@ -43,7 +43,8 @@ data Segment s t a =
 	If one does not wish to tag every element, @Maybe t'@ for some @t'@ can be used.
 	@()@ as @t@ would lead to no tags at all.
 -}
-type Route s t = Free (Segment s t)
+newtype Route s t a = Route { unRoute :: Free (Segment s t) a }
+	deriving (Functor, Applicative, Monad)
 
 {- |
 	Routes a path in a route. The following cases may occur when doing this:
@@ -86,7 +87,7 @@ r = do
 
 -}
 route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
-route t r s = get t s r where
+route t r s = get t s (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
 	get t [] _ = Just $ Left t
 	get t xs (Free (Choice as)) = msum $ map (get t xs) as
@@ -121,7 +122,7 @@ sortedNubBy f (a:b:xs) = a : sortedNubBy f (b:xs)
 	if the continuation possibilities of a route are needed.
 -}
 getBranch :: Ord s => t -> Route s t a -> [s] -> Maybe (Either [(s, Either t (a, t))] (a, t))
-getBranch t r s = get t s r where
+getBranch t r s = get t s (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
 	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
 	get _ [] (Free (Match t s a)) = Just $ Left [(s, getPure t a)]
@@ -143,18 +144,18 @@ getBranch t r s = get t s r where
 -- | A route which matches the segment @s@ tagged with @t@. If an other segment is provided,
 --   the route fails.
 match :: t -> s -> Route s t ()
-match t s = liftF (Match t s ())
+match t s = Route $ liftF (Match t s ())
 
 -- | A route which matches based of @f@. If for the given segment, @f s@ is
 --   @Just a@, @a@ is returned, if it is @Nothing@, the route fails.
 --   The captured segment is tagged with t.
 capture :: t -> (s -> Maybe a) -> Route s t a
-capture t f = liftF (Capture t f)
+capture t f = Route $ liftF (Capture t f)
 
 -- | Propes a list of routes and takes the first one, that does not fail.
 choice :: [Route s t a] -> Route s t a
-choice rs = join $ liftF (Choice rs)
+choice rs = Route . join $ liftF (Choice $ map unRoute rs)
 
 -- | A route, which always fails.
 noRoute :: Route s t a
-noRoute = liftF NoRoute
+noRoute = Route $ liftF NoRoute
