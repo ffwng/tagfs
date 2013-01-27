@@ -106,7 +106,7 @@ removeTag t name (TagSet x ts) = TagSet x $ M.adjust (S.delete t) name ts
 
 -- | Overwrites the 'Tag's of a file in the 'TagSet'.
 setTags :: [Tag] -> FilePath -> TagSet -> TagSet
-setTags t name (TagSet x ts) = TagSet (S.union x tags) $ M.adjust (const tags) name ts
+setTags t name (TagSet x ts) = TagSet (x `S.union` tags) $ M.adjust (const tags) name ts
 	where tags = S.fromList t
 
 -- | Adds a 'Tag' to the 'TagSet' without associating a file to it.

@@ -48,7 +48,7 @@ fileStat ctx size = FileStat {
 realFileStat :: FilePath -> IO FileStat
 realFileStat uri = do
 	status <- getFileStatus uri
-	return $ FileStat {
+	return FileStat {
 		statEntryType = RegularFile
 		, statFileMode = fileMode status
 		, statLinkCount = linkCount status

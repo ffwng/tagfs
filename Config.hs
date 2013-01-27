@@ -49,7 +49,7 @@ safeIndex (x:_) 0 = Just x
 safeIndex (x:xs) n = safeIndex xs $! (n-1)
 
 findElems :: [Tag] -> [FilePath] -> [(Int, Int)] -> [(FilePath, Tag)]
-findElems ts fs m = catMaybes $ map helper m where
+findElems ts fs = mapMaybe helper where
 	helper (i1, i2) = do
 		f <- safeIndex fs i1
 		t <- safeIndex ts i2
@@ -64,7 +64,7 @@ readConfig s = withConnection s $ \c -> do
 	return $ Config ts fs ms
 
 findIds :: [Tag] -> [FilePath] -> [(FilePath, Tag)] -> [(Int, Int)]
-findIds ts fs ms = catMaybes $ map helper ms where
+findIds ts fs = mapMaybe helper where
 	helper (f, t) = do
 		i1 <- elemIndex f fs
 		i2 <- elemIndex t ts

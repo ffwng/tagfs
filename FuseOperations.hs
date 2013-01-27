@@ -32,7 +32,7 @@ getRealPath :: Status -> FilePath -> FilePath
 getRealPath s p = fromMaybe "/dev/null" $ M.lookup p (getFileMapping s)
 
 newStatus :: TagSet -> Map FilePath FilePath -> Status
-newStatus ts m = Status ts m
+newStatus = Status
 
 updateStatus :: Status -> TagSet -> Status
 updateStatus s ts = s { getTagSet = ts }
@@ -71,7 +71,7 @@ tagFileContentLength :: [Tag] -> Int
 tagFileContentLength = B.length . tagFileContent
 
 parseTags :: ByteString -> [Tag]
-parseTags = catMaybes . map parseTag . lines . B.unpack
+parseTags = mapMaybe parseTag . lines . B.unpack
 
 forFile :: Route Entry -> String -> IO a -> (Dir -> IO a) -> (Entry -> IO a)
 	-> IO a
@@ -138,7 +138,7 @@ readDirectory ref p = do
 		returnRight $ defaultStats ctx ++ stats
 	maybe (returnLeft eNOENT) (maybe (returnLeft eNOTDIR) buildEntries) $ routeDir r p
 	where
-		makeStat _ c (n, Left _) = return $ (n, dirStat c)
+		makeStat _ c (n, Left _) = return (n, dirStat c)
 		makeStat s c (n, Right e) = (n,) <$> getEntryStat s c e
 
 softInit :: [a] -> [a]

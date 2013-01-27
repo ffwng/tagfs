@@ -140,8 +140,8 @@ getBranch t r s = get t s (unRoute r) where
 	interpret' xs = Just $ interpret [] xs
 	
 	interpret acc [] = Left . sortedNubBy ((==) `on` fst) $ sortBy (comparing fst) acc
-	interpret acc ((Left x):xs) = interpret (x ++ acc) xs
-	interpret _ ((Right a):_) = Right a
+	interpret acc (Left x : xs) = interpret (x ++ acc) xs
+	interpret _ (Right a : _) = Right a
 
 	getPure t (Pure a) = Right (a, t)
 	getPure t _ = Left t

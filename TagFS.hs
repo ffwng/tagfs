@@ -8,6 +8,7 @@ import System.IO
 import System.FilePath
 import Data.List
 import Control.Applicative
+import Control.Arrow
 import Data.Maybe
 import Data.Function (on)
 import Control.Monad.Trans
@@ -56,7 +57,7 @@ choice_ l = do
 modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
 modifyVisited f = modify (\s -> s { visited = f (visited s) })
 
-modifyPredicate :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> RouteBuilder ()
+modifyPredicate :: ((Set Tag -> Bool) -> Set Tag -> Bool) -> RouteBuilder ()
 modifyPredicate f = modify (\s -> s { predicate = f (predicate s) })
 
 buildBaseRoute :: TagSet -> Route Entry
@@ -85,19 +86,18 @@ plainTagRoute tag = do
 	buildSubRoute
 
 logicalDirsRoute :: Tag -> RouteBuilder Entry
-logicalDirsRoute tag = do
-	choice_
-		[ logicalTagRoute (\f s -> f s && S.member tag s) "and" tag
-		, logicalTagRoute (\f s -> f s || S.member tag s) "or" tag
-		, logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
-		, lift (match Nothing "and")
-			>> logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
-		, lift (match Nothing "or")
-			>> logicalTagRoute (\f s -> f s || not (S.member tag s)) "not" tag
-		]
+logicalDirsRoute tag = choice_
+	[ logicalTagRoute (\f s -> f s && S.member tag s) "and" tag
+	, logicalTagRoute (\f s -> f s || S.member tag s) "or" tag
+	, logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
+	, lift (match Nothing "and")
+		>> logicalTagRoute (\f s -> f s && not (S.member tag s)) "not" tag
+	, lift (match Nothing "or")
+		>> logicalTagRoute (\f s -> f s || not (S.member tag s)) "not" tag
+	]
 
 
-logicalTagRoute :: ((Set Tag -> Bool) -> (Set Tag -> Bool)) -> String -> Tag
+logicalTagRoute :: ((Set Tag -> Bool) -> Set Tag -> Bool) -> String -> Tag
 	-> RouteBuilder Entry
 logicalTagRoute f funcname tag = do
 	lift (match Nothing funcname)
@@ -107,8 +107,7 @@ logicalTagRoute f funcname tag = do
 	buildSubRoute
 
 tagDir :: Tag -> RouteBuilder ()
-tagDir tag@(Simple n) = lift $ do
-	match (Just $ TagDir tag) n
+tagDir tag@(Simple n) = lift $ match (Just $ TagDir tag) n
 tagDir tag@(Extended n v) = lift $ do
 	match (Just $ ExtendedBaseDir n) n
 	match (Just $ TagDir tag) v
@@ -117,8 +116,7 @@ regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
 	f <- gets predicate
 	files <- queryFiles f <$> gets tagSet
-	lift $ choice $ map get files where
-		get file = regularFile file
+	lift $ choice $ map regularFile files
 
 tagFileExt :: FilePath
 tagFileExt = ".tags"
@@ -170,7 +168,7 @@ routeDir' :: Route Entry -> [FilePath]
 routeDir' r seg = case getBranch Nothing r seg of
 	Nothing -> Nothing
 	Just (Right _) -> Just Nothing
-	Just (Left es) -> Just . Just $ map (\(s, e) -> (s, helper e)) es
+	Just (Left es) -> Just . Just $ map (second helper) es
 
 {-route :: Route a -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg where
