@@ -25,15 +25,45 @@ import Control.Monad.Trans.State
 import Data.Set (Set)
 import qualified Data.Set as S
 
+
+{- |
+	A file in the tagfs file system.
+	
+	Currently, the following types of files occur:
+
+	* @'RegularFile' path@ – A file, wich points to a real file with name @path@
+
+	* @'TagFile' tags name path@ – A virtual file containing the @tags@ of the file
+	  @name@. The 'TagFile' itself has the file name @path@. Usually, this will be
+	  @name ++ \".tags\"@
+-}
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
 	deriving (Show, Eq)
 
+
+{- |
+	A directory in the tagfs file system.
+
+	Currently, the following types of directories occur:
+
+	* @'TagDir' tag@ – A directory representing the 'Tag' @tag@. Usually, this
+	  will include all files with this tag, probably further filtered.
+
+	* @'ExtendedBaseDir' name@ – An 'ExtendedTag' is representet as a path
+	  @name/value@ with two directories. The @value@ directory will be the
+	  'TagDir' of the tag, the @name@ directory is an @'ExtendedBaseDir' name@.
+
+	* 'Dir' – A default directory without special meaning (such as the root
+	  directory).
+-}
 data Dir = TagDir Tag
 	| ExtendedBaseDir String
 	| Dir
 	deriving (Show, Ord, Eq)
 
+-- | The 'Route.Route' used for the tagfs file system. It uses 'FilePath' for the path
+-- segments and @('Maybe' 'Dir')@ as directory tags.
 type Route = R.Route FilePath (Maybe Dir)
 
 {- |
@@ -63,8 +93,11 @@ getValue :: Tag -> String
 getValue (Simple v) = v
 getValue (Extended _ v) = v
 
+-- | The 'TagSet.TagSet' used for the tagfs file system. It uses 'FilePath' for
+-- file names and 'Tag' for tags.
 type TagSet = T.TagSet FilePath Tag
 
+-- | Gets the path name of an 'Entry'.
 getEntryPath :: Entry -> FilePath
 getEntryPath (RegularFile p) = p
 getEntryPath (TagFile _ _ p) = p
@@ -98,6 +131,7 @@ modifyVisited f = modify (\s -> s { visited = f (visited s) })
 modifyPredicate :: ((Set Tag -> Bool) -> Set Tag -> Bool) -> RouteBuilder ()
 modifyPredicate f = modify (\s -> s { predicate = f (predicate s) })
 
+-- | Creates the complete tagfs file system route for a given 'TagSet'.
 buildBaseRoute :: TagSet -> Route Entry
 buildBaseRoute ts = evalStateT buildSubRoute (makeStatus ts)
 
@@ -177,19 +211,25 @@ tagFileRoute = do
 
 -- helper function for easier routing
 
+-- | This is an alternative file path seperator, which can be used for extended tags.
+-- The current value ist \':\'. So @name/value@ and @name:value@ refer to the same path.
 tagSep :: Char
 tagSep = ':'
 
 -- todo: handle ':'-handling in tagDirRoute
-split :: FilePath -> [String]
+-- | Splits a 'FilePath' in a list of directories. The path is expected to begin
+-- with \'\/\'. It is splitted on every \'\/\' (but the first one) and 'tagSep'.
+split :: FilePath -> [FilePath]
 split p = split' (map f p) where
 	f x | x == tagSep = pathSeparator
 	f x = x
 
-split' :: FilePath -> [String]
+split' :: FilePath -> [FilePath]
 split' [] = error "split': empty list"
 split' (_:ps) = splitDirectories ps
 
+-- | Routes a given path. Performs splitting with 'split' and wraps
+-- 'Route.route', giving a nicer return type.
 route :: Route Entry -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg
 
@@ -197,37 +237,19 @@ helper :: Either (Maybe Dir) (a, t) -> Either Dir a
 helper (Left e) = Left $ fromMaybe Dir e
 helper (Right (a,_)) = Right a
 
+-- | A variant of 'route', which expects the path to be splitted with 'split' already.
 route' :: Route Entry -> [FilePath] -> Maybe (Either Dir Entry)
 route' r seg = helper <$> R.route Nothing r seg
 
+-- | Routes a given path wir 'Route.getBranch'. Performs splitting with 'split'
+-- and wraps the result into a nicer type.
 routeDir :: Route Entry -> FilePath -> Maybe (Maybe [(FilePath, Either Dir Entry)])
 routeDir r p = let seg = split p in routeDir' r seg
 
+-- | A variant of 'routeDir', wich expects the path to be splitted with 'split' already.
 routeDir' :: Route Entry -> [FilePath]
 	-> Maybe (Maybe [(FilePath, Either Dir Entry)])
 routeDir' r seg = case getBranch Nothing r seg of
 	Nothing -> Nothing
 	Just (Right _) -> Just Nothing
 	Just (Left es) -> Just . Just $ map (second helper) es
-
-{-route :: Route a -> FilePath -> Maybe (Either Dir Entry)
-route r p = let seg = split p in route' r seg where
-
-route' :: Route a -> [FilePath] -> Maybe (Either Dir Entry)
-route' r seg = case runRoute r seg of
-	(Just e, _, _) -> Just $ Right e
-	(_, Just t, _) -> Just $ Left t
-	_ -> Nothing
-
-routeDir :: Route a -> FilePath -> Maybe (Maybe [Leaf])
-routeDir r p = let seg = split p in routeDir' r seg
-
-routeDir' :: Route a -> [FilePath] -> Maybe (Maybe [Leaf])
-routeDir' r seg = case runRoute r seg of
-	(Just _, _, _) -> Just Nothing
-	(_, _, Just e) -> Just . Just $ map leaf e
-	_ -> Nothing
-	where
-		leaf (p, Nothing) = File p
-		leaf (p, _) = Dir p
--}
