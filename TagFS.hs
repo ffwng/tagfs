@@ -1,4 +1,15 @@
-module TagFS where
+module TagFS (
+	Route, TagSet,
+	Tag(..),
+	getName, getValue,
+	Entry(..),
+	Dir(..),
+	getEntryPath,
+	buildBaseRoute,
+	route, route',
+	routeDir, routeDir',
+	split, tagSep
+) where
 
 import Route hiding (Route, route)
 import qualified Route as R
