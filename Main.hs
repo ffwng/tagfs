@@ -8,7 +8,8 @@ import System.Fuse (fuseMain, defaultExceptionHandler)
 import System.FilePath
 import qualified Data.Map as M
 
-import TagSet
+import TagSet hiding (TagSet)
+import TagFS
 import FuseOperations
 
 ts = fromFiles [Simple "bar", Extended "loc" "hier", Extended "loc" "da"]

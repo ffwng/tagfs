@@ -2,7 +2,8 @@ module TagFS where
 
 import Route hiding (Route, route)
 import qualified Route as R
-import TagSet
+import TagSet hiding (TagSet)
+import qualified TagSet as T
 
 import System.IO
 import System.FilePath
@@ -26,6 +27,35 @@ data Dir = TagDir Tag
 	deriving (Show, Ord, Eq)
 
 type Route = R.Route FilePath (Maybe Dir)
+
+{- |
+	A tag of a file. There are two possible forms of tags:
+
+	* Simple tags: these tags have a name and act as simple
+	  on/off tags. Either they are present or not for a given file. A file may not
+	  have two simple tags of the same name.
+
+	* Extended tags: these tags have a name and an associated 'String' value.
+	  This way, further information can be provided, when these tags are present.
+	  A file can have multiple extended tags with the same name but different values,
+	  but no two extended tags of the same name and value.
+
+	It is possible but highly discouraged to have a file with a simple and an
+	extended tag of the same name.
+-}
+data Tag = Simple String | Extended String String deriving (Eq, Ord, Show)
+
+-- | Extracts the name of a 'Tag'.
+getName :: Tag -> String
+getName (Simple n) = n
+getName (Extended n _) = n
+
+-- | Extracts the value of a 'Tag'. For simple tags, the name is returned instead.
+getValue :: Tag -> String
+getValue (Simple v) = v
+getValue (Extended _ v) = v
+
+type TagSet = T.TagSet FilePath Tag
 
 getEntryPath :: Entry -> FilePath
 getEntryPath (RegularFile p) = p

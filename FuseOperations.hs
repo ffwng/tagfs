@@ -16,7 +16,7 @@ import System.Posix.Types
 import System.FilePath
 
 import TagFS
-import TagSet
+import TagSet hiding (TagSet)
 import Stat
 
 data Status = Status
