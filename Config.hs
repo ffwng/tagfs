@@ -4,16 +4,12 @@ module Config where
 import Control.Monad
 import Control.Applicative
 import Database.SQLite.Simple
-import Database.SQLite.Simple.FromField
-import Database.SQLite.Simple.ToField
-import qualified Data.Text as T
-import Control.Arrow
 import Data.List
 import Data.Maybe
 
 import GHC.Exts (fromString)
 
-import TagSet (Tag(..))
+import TagFS (Tag(..))
 
 tagToRepr :: Int -> Tag -> (Int, String, Maybe String)
 tagToRepr i (Simple n) = (i, n, Nothing)
