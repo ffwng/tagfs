@@ -42,7 +42,7 @@ createEmptyTables c = do
 safeIndex :: [a] -> Int -> Maybe a
 safeIndex [] _ = Nothing
 safeIndex (x:_) 0 = Just x
-safeIndex (x:xs) n = safeIndex xs $! (n-1)
+safeIndex (_:xs) n = safeIndex xs $! (n-1)
 
 findElems :: [Tag] -> [FilePath] -> [(Int, Int)] -> [(FilePath, Tag)]
 findElems ts fs = mapMaybe helper where
