@@ -12,8 +12,11 @@ import TagSet hiding (TagSet)
 import TagFS
 import FuseOperations
 
+ts :: TagSet
 ts = fromFiles [Simple "bar", Extended "loc" "hier", Extended "loc" "da"]
 	[("file1", [Simple "bar"]), ("file2", [Extended "loc" "hier"]), ("file3", [])]
+
+mapping :: M.Map FilePath FilePath
 mapping = M.fromList [("file1", "/tmp/file1"), ("file2", "/tmp/file2"),
 	("file3", "/tmp/file3")]
 -- ^ for testing purposes only
@@ -21,6 +24,7 @@ mapping = M.fromList [("file1", "/tmp/file1"), ("file2", "/tmp/file2"),
 getFiles :: FilePath -> IO [(FilePath, FilePath)]
 getFiles p = filterM (doesFileExist . fst) . map ((p </>) &&& id) =<< getDirectoryContents p
 
+main :: IO ()
 main = do
 	status <- newIORef $ newStatus ts mapping
 	fuseMain (fsOps status) defaultExceptionHandler

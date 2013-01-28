@@ -40,14 +40,15 @@ updateStatus s ts = s { getTagSet = ts }
 
 -- helper functions
 
+returnLeft :: Monad m => a -> m (Either a b)
 returnLeft = return . Left
 
+returnRight :: Monad m => b -> m (Either a b)
 returnRight = return . Right
 
 getEntryStat :: Status -> FuseContext -> Entry -> IO FileStat
 getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
-getEntryStat _ ctx (TagFile tags _ _) = return $ fileStat ctx (tagFileContentLength tags)
---getEntryStat _ ctx e | isDir e = return $ dirStat ctx
+getEntryStat _ ctx (TagFile ts _ _) = return $ fileStat ctx (tagFileContentLength ts)
 
 getDirStat :: Status -> FuseContext -> Dir -> IO FileStat
 getDirStat _ ctx _ = return $ dirStat ctx
@@ -55,7 +56,7 @@ getDirStat _ ctx _ = return $ dirStat ctx
 parseTag :: String -> Maybe Tag
 parseTag s = case span (/= tagSep) s of
 	(n, []) | notNull n -> Just (Simple n)
-	(n, tagSep:v) | notNull n && notNull v -> Just (Extended n v)
+	(n, _:v) | notNull n && notNull v -> Just (Extended n v)
 	_ -> Nothing
 	where
 		notNull = not . null
@@ -122,6 +123,7 @@ getFileStat ref p = do
 
 -- directories
 
+defaultStats :: FuseContext -> [(String, FileStat)]
 defaultStats ctx = [(".", dirStat ctx), ("..", dirStat ctx)]
 
 openDirectory :: IORef Status -> FilePath -> IO Errno
@@ -147,7 +149,7 @@ softInit x = init x
 
 createDirectory :: IORef Status -> FilePath -> FileMode -> IO Errno
 createDirectory ref p _ = do
-	let seg = split' p
+	let seg = split p
 	let tag = parseTag (last seg)
 	status <- readIORef ref
 	let r = getRoute status
@@ -158,12 +160,12 @@ createDirectory ref p _ = do
 		let r'' = route' r (softInit seg)
 		case (,) <$> tag <*> r'' of
 			Just (Simple v, Left (ExtendedBaseDir name))
-				-> newTag (Extended name v) status ref
+				-> newTag (Extended name v) status
 			Just (_, Left (ExtendedBaseDir _)) -> return ePERM
-			Just (tag', Left x) -> newTag tag' status ref
+			Just (tag', Left _) -> newTag tag' status
 			_ -> return eINVAL
 	where
-		newTag tag status ref = do
+		newTag tag status = do
 			let ts = getTagSet status
 			let tsNew = createTag tag ts
 			writeIORef ref (updateStatus status tsNew)
@@ -177,7 +179,6 @@ removeDirectory ref p = do
 	let ts = getTagSet status
 	forDir' r seg (return eNOENT) (\_ -> return eNOTDIR) $ \x -> case x of
 		TagDir t -> do
-			let name = last seg
 			let tsNew = wipeTag t ts
 			writeIORef ref (updateStatus status tsNew)
 			return eOK
@@ -273,7 +274,7 @@ tagfsCreateLink ref src dst = do
 -- filesystem
 
 getFileSystemStats :: String -> IO (Either Errno FileSystemStats)
-getFileSystemStats str = returnRight FileSystemStats
+getFileSystemStats _ = returnRight FileSystemStats
 	{ fsStatBlockSize = 510
 	, fsStatBlockCount = 1
 	, fsStatBlocksFree = 1

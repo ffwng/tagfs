@@ -11,17 +11,12 @@ module TagSet (
 ) where
 
 import Prelude hiding (any)
-import System.IO (FilePath)
 import Data.Set (Set)
 import qualified Data.Set as S
 import Data.Map (Map)
 import qualified Data.Map as M
-import Data.List hiding (any)
 import Control.Applicative
 import Control.Arrow (second)
-import Data.Foldable (any)
-import Data.Function
-import Data.Ord
 
 {- |
 	A multi-bimap between files and tags. It is possible to have both
@@ -37,7 +32,7 @@ emptyTagSet = TagSet S.empty M.empty
 -- | Creates a 'TagSet' from a list of tags and a @(f, [t])@ association
 --   list.
 fromFiles :: (Ord t, Ord f) => [t] -> [(f, [t])] -> TagSet f t
-fromFiles tags = TagSet (S.fromList tags) . M.fromList . map (second S.fromList)
+fromFiles ts = TagSet (S.fromList ts) . M.fromList . map (second S.fromList)
 
 -- query functions
 
@@ -77,8 +72,8 @@ removeTag t name (TagSet x ts) = TagSet x $ M.adjust (S.delete t) name ts
 
 -- | Overwrites the ts of a file in the 'TagSet'.
 setTags :: (Ord t, Ord f) => [t] -> f -> TagSet f t -> TagSet f t
-setTags t name (TagSet x ts) = TagSet (x `S.union` tags) $ M.adjust (const tags) name ts
-	where tags = S.fromList t
+setTags t name (TagSet x ts) = TagSet (x `S.union` tset) $ M.adjust (const tset) name ts
+	where tset = S.fromList t
 
 -- | Adds a t to the 'TagSet' without associating a file to it.
 createTag :: Ord t => t -> TagSet f t -> TagSet f t
@@ -91,10 +86,6 @@ wipeTag t (TagSet x ts) = TagSet (S.delete t x) $ M.map (S.delete t) ts
 
 
 -- serialization
-
-groupFirst :: Eq a => [(a,b)] -> [(a, [b])]
-groupFirst = map f . groupBy ((==) `on` fst) where
-	f l = (fst $ head l, map snd l)
 
 -- | Gets a tag association list for the 'TagSet'. Files with no tags or tags
 --   with no files are not contained in the list. A tag with multiple files or

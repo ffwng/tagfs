@@ -92,7 +92,7 @@ r = do
 
 -}
 route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
-route t r s = get t s (unRoute r) where
+route bt r bs = get bt bs (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
 	get t [] _ = Just $ Left t
 	get t xs (Free (Choice as)) = msum $ map (get t xs) as
@@ -127,7 +127,7 @@ sortedNubBy f (a:b:xs) = a : sortedNubBy f (b:xs)
 	if the continuation possibilities of a route are needed.
 -}
 getBranch :: Ord s => t -> Route s t a -> [s] -> Maybe (Either [(s, Either t (a, t))] (a, t))
-getBranch t r s = get t s (unRoute r) where
+getBranch bt r bs = get bt bs (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
 	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
 	get _ [] (Free (Match t s a)) = Just $ Left [(s, getPure t a)]

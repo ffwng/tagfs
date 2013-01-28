@@ -5,13 +5,10 @@ import qualified Route as R
 import TagSet hiding (TagSet)
 import qualified TagSet as T
 
-import System.IO
 import System.FilePath
-import Data.List
 import Control.Applicative
 import Control.Arrow
 import Data.Maybe
-import Data.Function (on)
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Data.Set (Set)
@@ -79,9 +76,9 @@ type RouteBuilder a = StateT FSStatus Route a
 
 choice_ :: [RouteBuilder a] -> RouteBuilder a
 choice_ l = do
-	state <- get
-	(a, state') <- lift . choice $ map (`runStateT` state) l
-	put state'
+	state1 <- get
+	(a, state2) <- lift . choice $ map (`runStateT` state1) l
+	put state2
 	return a
 
 modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
@@ -106,6 +103,7 @@ tagDirsRoute = do
 	let mytags = filter (`notElem` visit) (tags ts)
 	choice_ (map tagRoute mytags)
 
+tagRoute :: Tag -> RouteBuilder Entry
 tagRoute t = choice_ [plainTagRoute t, logicalDirsRoute t]
 	
 plainTagRoute :: Tag -> RouteBuilder Entry
@@ -145,24 +143,24 @@ tagDir tag@(Extended n v) = lift $ do
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
 	f <- gets predicate
-	files <- queryFiles f <$> gets tagSet
-	lift $ choice $ map regularFile files
+	fs <- queryFiles f <$> gets tagSet
+	lift $ choice $ map regularFile fs
 
 tagFileExt :: FilePath
 tagFileExt = ".tags"
 
 tagFileRoute :: RouteBuilder Entry
 tagFileRoute = do
-	(name, path) <- lift $ capture Nothing getName
+	(name, path) <- lift $ capture Nothing splitName
 	f <- gets predicate
 	ts <- gets tagSet
-	let files = queryFiles f ts
-	if name `notElem` files then lift noRoute
+	let fs = queryFiles f ts
+	if name `notElem` fs then lift noRoute
 	else do
 		let t = queryTags name ts
 		lift $ maybe noRoute (\t' -> return $ TagFile t' name path) t
 		where
-			getName n = case splitExtension n of
+			splitName n = case splitExtension n of
 				(name, ext) | ext == tagFileExt -> Just (name, n)
 				_ -> Nothing
 
@@ -178,7 +176,8 @@ split p = split' (map f p) where
 	f x = x
 
 split' :: FilePath -> [String]
-split' (p:ps) = splitDirectories ps
+split' [] = error "split': empty list"
+split' (_:ps) = splitDirectories ps
 
 route :: Route Entry -> FilePath -> Maybe (Either Dir Entry)
 route r p = let seg = split p in route' r seg
