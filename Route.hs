@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, TupleSections, GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE DeriveFunctor, TupleSections, GeneralizedNewtypeDeriving, Trustworthy #-}
 module Route (
 	Route,
 	route,
