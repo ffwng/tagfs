@@ -6,6 +6,7 @@ module TagSet (
 	queryFiles,
 	tags, files,
 	addTag, removeTag, setTags,
+	addFile, removeFile,
 	createTag, wipeTag,
 	getTagAssocs, craftTagSet
 ) where
@@ -85,6 +86,14 @@ createTag t (TagSet x ts) = TagSet (S.insert t x) ts
 wipeTag :: Ord t => t -> TagSet f t -> TagSet f t
 wipeTag t (TagSet x ts) = TagSet (S.delete t x) $ M.map (S.delete t) ts
 
+-- | Adds a file. If the file was already present, it is reinserted with no tags.
+addFile :: Ord f => f -> TagSet f t -> TagSet f t
+addFile f (TagSet x ts) = TagSet x $ M.insert f S.empty ts
+
+-- | Removes a file from the 'TagSet'. If the file was not present, the original
+--   'TagSet' is returned.
+removeFile :: Ord f => f -> TagSet f t -> TagSet f t
+removeFile f (TagSet x ts) = TagSet x $ M.delete f ts
 
 -- serialization
 
