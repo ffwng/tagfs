@@ -4,7 +4,7 @@ import TagFS (TagSet)
 import qualified TagSet as T
 import qualified Data.Map as M
 import Data.Functor
-import Safe
+import Control.Exception
 
 data Config = Config
 	{ tagSet :: TagSet
@@ -12,8 +12,13 @@ data Config = Config
 	}
 	deriving (Eq, Show, Read)
 
+emptyConfig :: Config
+emptyConfig = Config T.emptyTagSet M.empty
+
 readConfig :: FilePath -> IO (Maybe Config)
-readConfig f = readMay <$> readFile f
+readConfig f = (Just . read <$> readFile f) `catch` foo where
+	foo :: SomeException -> IO (Maybe Config)  -- fixes ambiguous exception tipe
+	foo _ = return Nothing
 
 writeConfig :: FilePath -> Config -> IO ()
 writeConfig f c = writeFile f $ show c

@@ -6,25 +6,50 @@ import System.Directory
 import Data.IORef
 import System.Fuse (fuseMain, defaultExceptionHandler)
 import System.FilePath
-import qualified Data.Map as M
+import Data.Maybe
+import System.Environment
+import Data.Functor
 
-import TagSet hiding (TagSet)
-import TagFS
 import FuseOperations
+import Config
 
-ts :: TagSet
+{-ts :: TagSet
 ts = fromFiles [Simple "bar", Extended "loc" "hier", Extended "loc" "da"]
 	[("file1", [Simple "bar"]), ("file2", [Extended "loc" "hier"]), ("file3", [])]
 
 mapping :: M.Map FilePath FilePath
 mapping = M.fromList [("file1", "/tmp/file1"), ("file2", "/tmp/file2"),
-	("file3", "/tmp/file3")]
+	("file3", "/tmp/file3")]-}
 -- ^ for testing purposes only
 
 getFiles :: FilePath -> IO [(FilePath, FilePath)]
-getFiles p = filterM (doesFileExist . fst) . map ((p </>) &&& id) =<< getDirectoryContents p
+getFiles p = filterM (doesFileExist . fst) . map (id &&& (p </>)) =<< getDirectoryContents p
+
+interpretArg :: String -> IO [(FilePath, FilePath)]
+interpretArg s = do
+	path <- canonicalizePath s
+	b <- doesDirectoryExist path
+	if b then getFiles path
+	else do
+		let s' = takeFileName s
+		return [(s', path)]
+
+configPath :: FilePath
+configPath = "tagfs.conf"
 
 main :: IO ()
 main = do
-	status <- newIORef $ newStatus ts mapping
-	fuseMain (fsOps status) defaultExceptionHandler
+	conf <- fromMaybe emptyConfig <$> readConfig configPath
+	args <- getArgs
+	case args of
+		"mount":xs -> withArgs xs $ do
+			status <- newIORef $ newStatus (tagSet conf) (mapping conf)
+			fuseMain (fsOps status) defaultExceptionHandler
+		"add":xs -> do
+			files <- concat <$> mapM interpretArg xs
+			let conf' = foldr Config.addFile conf files
+			writeConfig configPath conf'
+		"remove":xs -> do
+			let conf' = foldr Config.removeFile conf xs
+			writeConfig configPath conf'
+		_ -> putStrLn "could not interpret argument"
