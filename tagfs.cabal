@@ -28,7 +28,7 @@ executable tagfs
                         transformers ==0.3.*,
                         free ==3.3.*,
                         directory ==1.2.*
-  ghc-options:          -Wall
+  ghc-options:          -Wall -threaded
   extensions:           DoAndIfThenElse
 
 -- vim: set ts=2 sts=2 sw=2 et:
