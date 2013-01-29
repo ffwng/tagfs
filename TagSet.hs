@@ -24,6 +24,7 @@ import Control.Arrow (second)
 	as well as multiple tags per file and multiple files per tag.
 -}
 data TagSet f t = TagSet (Set t) (Map f (Set t))
+	deriving (Eq, Show, Read)
 
 -- | Creates an empty 'TagSet'.
 emptyTagSet :: TagSet f t

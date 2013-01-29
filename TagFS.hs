@@ -39,7 +39,7 @@ import qualified Data.Set as S
 -}
 data Entry = RegularFile FilePath
 	| TagFile [Tag] FilePath FilePath
-	deriving (Show, Eq)
+	deriving (Eq, Show, Read)
 
 
 {- |
@@ -60,7 +60,7 @@ data Entry = RegularFile FilePath
 data Dir = TagDir Tag
 	| ExtendedBaseDir String
 	| Dir
-	deriving (Show, Ord, Eq)
+	deriving (Eq, Ord, Show, Read)
 
 -- | The 'Route.Route' used for the tagfs file system. It uses 'FilePath' for the path
 -- segments and @('Maybe' 'Dir')@ as directory tags.
@@ -81,7 +81,8 @@ type Route = R.Route FilePath (Maybe Dir)
 	It is possible but highly discouraged to have a file with a simple and an
 	extended tag of the same name.
 -}
-data Tag = Simple String | Extended String String deriving (Eq, Ord, Show)
+data Tag = Simple String | Extended String String
+	deriving (Eq, Ord, Show, Read)
 
 -- | Extracts the name of a 'Tag'.
 getName :: Tag -> String
