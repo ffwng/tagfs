@@ -52,4 +52,9 @@ main = do
 		"remove":xs -> do
 			let conf' = foldr Config.removeFile conf xs
 			writeConfig configPath conf'
+		"tag":t:xs -> case parseTag t of
+			Just t' -> do
+				let conf' = foldr (Config.tagFile t') conf xs
+				writeConfig configPath conf'
+			_ -> return ()
 		_ -> putStrLn "could not interpret argument"
