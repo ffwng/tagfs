@@ -17,7 +17,6 @@ executable tagfs
                         TagFS
                         TagSet
   build-depends:        base ==4.6.*,
-                        sqlite-simple ==0.4.*,
                         text ==0.11.*,
                         HFuse ==0.2.*,
                         bytestring ==0.10.*,
@@ -28,7 +27,7 @@ executable tagfs
                         transformers ==0.3.*,
                         free ==3.3.*,
                         directory ==1.2.*
-  ghc-options:          -Wall -threaded
+  ghc-options:          -Wall -threaded -rtsopts
   extensions:           DoAndIfThenElse
 
 -- vim: set ts=2 sts=2 sw=2 et:
