@@ -189,8 +189,12 @@ tagDir tag@(Extended n v) = lift $ do
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
 	f <- gets predicate
-	fs <- queryFiles f <$> gets tagSet
-	lift $ choice $ map regularFile fs
+	--fs <- queryFiles f <$> gets tagSet
+	--lift $ choice $ map regularFile fs
+	fs <- queryFilesSet f <$> gets tagSet
+	s <- lift $ matchSet Nothing fs
+	return $ RegularFile s
+
 
 tagFileExt :: FilePath
 tagFileExt = ".tags"

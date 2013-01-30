@@ -3,7 +3,7 @@ module TagSet (
 	TagSet,
 	emptyTagSet,
 	fromFiles, queryTags,
-	queryFiles,
+	queryFiles, queryFilesSet,
 	tags, files,
 	addTag, removeTag, setTags,
 	addFile, removeFile,
@@ -42,6 +42,9 @@ fromFiles ts = TagSet (S.fromList ts) . M.fromList . map (second S.fromList)
 --   given predicate.
 queryFiles :: (Set t -> Bool) -> TagSet f t -> [f]
 queryFiles f (TagSet _ ts) = M.keys $ M.filter f ts
+
+queryFilesSet :: (Set t -> Bool) -> TagSet f t -> Set f
+queryFilesSet f (TagSet _ ts) = M.keysSet $ M.filter f ts
 
 -- | Gets a list of all tags in the 'TagSet'.
 tags :: TagSet f t -> [t]
