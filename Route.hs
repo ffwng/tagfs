@@ -158,6 +158,8 @@ getBranch bt r bs = get bt bs (unRoute r) where
 match :: t -> s -> Route s t ()
 match t s = Route $ liftF (Match t s ())
 
+-- | A route which matches any segment from the 'Set' @s@ tagged with @t@. It returns the
+--   actually matched segment.
 matchSet :: t -> Set s -> Route s t s
 matchSet t s = Route $ liftF (MatchSet t s id)
 
