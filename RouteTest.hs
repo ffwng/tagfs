@@ -2,6 +2,7 @@ module RouteTest where
 
 import Route hiding (Route)
 import qualified Route as R
+import qualified Data.Set as S
 
 data Dir = Dir1 | Dir2 | Dir3 deriving Show
 
@@ -10,7 +11,12 @@ type Route a = R.Route String (Maybe Dir) a
 dir1 :: Route Int
 dir1 = do
 	match (Just Dir1) "dir1"
-	choice [dir2, dir3]
+	choice [dir2, dirS]
+
+dirS :: Route Int
+dirS = do
+	s <- matchSet (Just Dir3) (S.fromList ["15", "21", "137"])
+	return $ read s
 
 dir2 :: Route Int
 dir2 = do

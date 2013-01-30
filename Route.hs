@@ -3,7 +3,7 @@ module Route (
 	Route,
 	route,
 	getBranch,
-	match, capture, choice, noRoute
+	match, matchSet, capture, choice, noRoute
 ) where
 
 import Control.Monad
@@ -13,9 +13,12 @@ import Data.Maybe
 import Data.List
 import Data.Function
 import Data.Ord
+import Data.Set (Set)
+import qualified Data.Set as S
 
 data Segment s t a =
 	  Match t s a
+	| MatchSet t (Set s) (s -> a)
 	| Capture t (s -> Maybe a)
 	| Choice [a]
 	| NoRoute
@@ -91,12 +94,13 @@ r = do
 	* [\"foo\", \"bar\", \"barfoo\", \"barfoo2\"] returning (1, \'d\')
 
 -}
-route :: Eq s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
+route :: Ord s => t -> Route s t a -> [s] -> Maybe (Either t (a, t))
 route bt r bs = get bt bs (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
 	get t [] _ = Just $ Left t
 	get t xs (Free (Choice as)) = msum $ map (get t xs) as
 	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
+	get _ (x:xs) (Free (MatchSet t s f)) | x `S.member` s = get t xs (f x)
 	get _ (x:xs) (Free (Capture t f)) = get t xs =<< f x
 	get _ _ _ = Nothing
 
@@ -131,6 +135,9 @@ getBranch bt r bs = get bt bs (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
 	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
 	get _ [] (Free (Match t s a)) = Just $ Left [(s, getPure t a)]
+	get _ (x:xs) (Free (MatchSet t s f)) | x `S.member` s = get t xs (f x)
+	get _ [] (Free (MatchSet t s f)) = Just . Left . map (\x -> (x, getPure t (f x)))
+		$ S.elems s
 	get _ (x:xs) (Free (Capture t f)) = get t xs =<< f x
 	get _ [] (Free (Capture _ _)) = Just $ Left []
 	get t xs (Free (Choice as)) = interpret' . catMaybes $ map (get t xs) as
@@ -150,6 +157,9 @@ getBranch bt r bs = get bt bs (unRoute r) where
 --   the route fails.
 match :: t -> s -> Route s t ()
 match t s = Route $ liftF (Match t s ())
+
+matchSet :: t -> Set s -> Route s t s
+matchSet t s = Route $ liftF (MatchSet t s id)
 
 -- | A route which matches based of @f@. If for the given segment, @f s@ is
 --   @Just a@, @a@ is returned, if it is @Nothing@, the route fails.
