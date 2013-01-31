@@ -21,21 +21,24 @@ import Stat
 
 data Status = Status
 	{ getTagSet :: TagSet
---	, getRoute :: Route Entry
+	, getRoute :: Route Entry
 	, getFileMapping :: Map FilePath FilePath
 	}
 
-getRoute :: Status -> Route Entry
-getRoute = buildBaseRoute . getTagSet
+--getRoute :: Status -> Route Entry
+--getRoute = buildBaseRoute . getTagSet
+
+resetRoute :: Status -> Status
+resetRoute s = updateStatus s (getTagSet s)
 
 getRealPath :: Status -> FilePath -> FilePath
 getRealPath s p = fromMaybe "/dev/null" $ M.lookup p (getFileMapping s)
 
 newStatus :: TagSet -> Map FilePath FilePath -> Status
-newStatus = Status
+newStatus ts m = Status ts (buildBaseRoute ts) m
 
 updateStatus :: Status -> TagSet -> Status
-updateStatus s ts = s { getTagSet = ts }
+updateStatus s ts = s { getTagSet = ts, getRoute = buildBaseRoute ts }
 
 
 -- helper functions
@@ -134,6 +137,8 @@ readDirectory :: IORef Status -> FilePath
 readDirectory ref p = do
 	ctx <- getFuseContext
 	status <- readIORef ref
+	-- reset route for further operations
+	writeIORef ref $ resetRoute status
 	let r = getRoute status
 	let buildEntries entries = do
 		stats <- mapM (makeStat status ctx) entries
