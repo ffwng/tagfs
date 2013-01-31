@@ -129,7 +129,7 @@ tagfsReadSymbolicLink :: IORef Status -> FilePath -> IO (Either Errno FilePath)
 tagfsReadSymbolicLink ref p = do
 	status <- readIORef ref
 	let r = getRoute status
-	forFile r p (returnLeft eNOENT) (const $ returnLeft eINVAL) $ \e -> case e of
+	forFile r p (returnLeft eNOENT) (\_ -> returnLeft eINVAL) $ \e -> case e of
 		RegularFile n -> do
 			let m = getFileMapping status
 			case M.lookup n m of
