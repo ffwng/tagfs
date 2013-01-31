@@ -51,6 +51,7 @@ returnRight = return . Right
 
 getEntryStat :: Status -> FuseContext -> Entry -> IO FileStat
 getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
+--getEntryStat _ ctx (RegularFile _) = return $ fileStat ctx (42 :: Int)
 getEntryStat _ ctx (TagFile ts _ _) = return $ fileStat ctx (tagFileContentLength ts)
 
 getDirStat :: Status -> FuseContext -> Dir -> IO FileStat
@@ -136,9 +137,9 @@ readDirectory :: IORef Status -> FilePath
 	-> IO (Either Errno [(FilePath, FileStat)])
 readDirectory ref p = do
 	ctx <- getFuseContext
-	status <- readIORef ref
-	-- reset route for further operations
-	writeIORef ref $ resetRoute status
+	status <- resetRoute <$> readIORef ref
+	-- reset route for further operations to save memory
+	writeIORef ref status
 	let r = getRoute status
 	let buildEntries entries = do
 		stats <- mapM (makeStat status ctx) entries
