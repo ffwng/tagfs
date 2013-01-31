@@ -45,6 +45,26 @@ fileStat ctx size = FileStat {
 		, statStatusChangeTime = 0
 	}
 
+linkStat :: FuseContext -> FileStat
+linkStat ctx = FileStat {
+	statEntryType = SymbolicLink
+	, statFileMode = foldr1 unionFileModes
+		[ ownerReadMode
+		, groupReadMode
+		, otherReadMode
+		, ownerWriteMode
+		]
+		, statLinkCount = 1
+		, statFileOwner = fuseCtxUserID ctx
+		, statFileGroup = fuseCtxGroupID ctx
+		, statSpecialDeviceID = 0
+		, statFileSize = 0
+		, statBlocks = 1
+		, statAccessTime = 0
+		, statModificationTime = 0
+		, statStatusChangeTime = 0
+	}
+
 realFileStat :: FilePath -> IO FileStat
 realFileStat uri = do
 	status <- getFileStatus uri

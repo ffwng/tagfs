@@ -50,8 +50,8 @@ returnRight :: Monad m => b -> m (Either a b)
 returnRight = return . Right
 
 getEntryStat :: Status -> FuseContext -> Entry -> IO FileStat
-getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
---getEntryStat _ ctx (RegularFile _) = return $ fileStat ctx (42 :: Int)
+--getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
+getEntryStat _ ctx (RegularFile _) = return $ linkStat ctx
 getEntryStat _ ctx (TagFile ts _ _) = return $ fileStat ctx (tagFileContentLength ts)
 
 getDirStat :: Status -> FuseContext -> Dir -> IO FileStat
@@ -124,6 +124,18 @@ getFileStat ref p = do
 	forFile r p (returnLeft eNOENT)
 		(\d -> Right <$> getDirStat status ctx d)
 		(\d -> Right <$> getEntryStat status ctx d)
+
+tagfsReadSymbolicLink :: IORef Status -> FilePath -> IO (Either Errno FilePath)
+tagfsReadSymbolicLink ref p = do
+	status <- readIORef ref
+	let r = getRoute status
+	forFile r p (returnLeft eNOENT) (const $ returnLeft eINVAL) $ \e -> case e of
+		RegularFile n -> do
+			let m = getFileMapping status
+			case M.lookup n m of
+				Nothing -> returnLeft eNOENT
+				Just n' -> returnRight n'
+		_ -> returnLeft eINVAL
 
 -- directories
 
@@ -293,6 +305,7 @@ getFileSystemStats _ = returnRight FileSystemStats
 fsOps :: IORef Status -> FuseOperations Handle
 fsOps r = defaultFuseOps
 	{ fuseGetFileStat = getFileStat r
+	, fuseReadSymbolicLink = tagfsReadSymbolicLink r
 	, fuseOpenDirectory = openDirectory r
 	, fuseReadDirectory = readDirectory r
 	, fuseCreateDirectory = createDirectory r
