@@ -34,35 +34,30 @@ fileStat ctx size = FileStat {
 		, otherReadMode
 		, ownerWriteMode
 		]
-		, statLinkCount = 1
-		, statFileOwner = fuseCtxUserID ctx
-		, statFileGroup = fuseCtxGroupID ctx
-		, statSpecialDeviceID = 0
-		, statFileSize = fromIntegral size
-		, statBlocks = 1
-		, statAccessTime = 0
-		, statModificationTime = 0
-		, statStatusChangeTime = 0
+	, statLinkCount = 1
+	, statFileOwner = fuseCtxUserID ctx
+	, statFileGroup = fuseCtxGroupID ctx
+	, statSpecialDeviceID = 0
+	, statFileSize = fromIntegral size
+	, statBlocks = 1
+	, statAccessTime = 0
+	, statModificationTime = 0
+	, statStatusChangeTime = 0
 	}
 
-linkStat :: FuseContext -> FileStat
-linkStat ctx = FileStat {
+linkStat :: Integral a => FuseContext -> a -> FileStat
+linkStat ctx size = FileStat {
 	statEntryType = SymbolicLink
-	, statFileMode = foldr1 unionFileModes
-		[ ownerReadMode
-		, groupReadMode
-		, otherReadMode
-		, ownerWriteMode
-		]
-		, statLinkCount = 1
-		, statFileOwner = fuseCtxUserID ctx
-		, statFileGroup = fuseCtxGroupID ctx
-		, statSpecialDeviceID = 0
-		, statFileSize = 0
-		, statBlocks = 1
-		, statAccessTime = 0
-		, statModificationTime = 0
-		, statStatusChangeTime = 0
+	, statFileMode = accessModes
+	, statLinkCount = 1
+	, statFileOwner = fuseCtxUserID ctx
+	, statFileGroup = fuseCtxGroupID ctx
+	, statSpecialDeviceID = 0
+	, statFileSize = fromIntegral size
+	, statBlocks = 1
+	, statAccessTime = 0
+	, statModificationTime = 0
+	, statStatusChangeTime = 0
 	}
 
 realFileStat :: FilePath -> IO FileStat

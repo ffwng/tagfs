@@ -51,7 +51,8 @@ returnRight = return . Right
 
 getEntryStat :: Status -> FuseContext -> Entry -> IO FileStat
 --getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
-getEntryStat _ ctx (RegularFile _) = return $ linkStat ctx
+--getEntryStat _ ctx (RegularFile _) = return $ fileStat ctx (0 :: Integer)
+getEntryStat _ ctx (RegularFile _) = return $ linkStat ctx (256 :: Integer)
 getEntryStat _ ctx (TagFile ts _ _) = return $ fileStat ctx (tagFileContentLength ts)
 
 getDirStat :: Status -> FuseContext -> Dir -> IO FileStat
