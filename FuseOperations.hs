@@ -21,8 +21,9 @@ import Stat
 
 data Status = Status
 	{ getTagSet :: TagSet
-	, getRoute :: Route Entry
 	, getFileMapping :: Map FilePath FilePath
+	, getRoute :: Route Entry
+	, save :: TagSet -> IO ()
 	}
 
 --getRoute :: Status -> Route Entry
@@ -34,11 +35,18 @@ resetRoute s = updateStatus s (getTagSet s)
 getRealPath :: Status -> FilePath -> FilePath
 getRealPath s p = fromMaybe "/dev/null" $ M.lookup p (getFileMapping s)
 
-newStatus :: TagSet -> Map FilePath FilePath -> Status
-newStatus ts m = Status ts (buildBaseRoute ts) m
+newStatus :: TagSet -> Map FilePath FilePath -> (TagSet -> IO ()) -> Status
+newStatus ts m s = Status ts m (buildBaseRoute ts) s
 
 updateStatus :: Status -> TagSet -> Status
 updateStatus s ts = s { getTagSet = ts, getRoute = buildBaseRoute ts }
+
+updateStatusRef :: IORef Status -> TagSet -> IO ()
+updateStatusRef ref ts = do
+	s <- readIORef ref
+	let s' = updateStatus s ts
+	save s' (getTagSet s')
+	writeIORef ref s'
 
 
 -- helper functions
@@ -187,7 +195,7 @@ createDirectory ref p _ = do
 		newTag tag status = do
 			let ts = getTagSet status
 			let tsNew = createTag tag ts
-			writeIORef ref (updateStatus status tsNew)
+			updateStatusRef ref tsNew
 			return eOK
 
 removeDirectory :: IORef Status -> FilePath -> IO Errno
@@ -199,12 +207,12 @@ removeDirectory ref p = do
 	forDir' r seg (return eNOENT) (\_ -> return eNOTDIR) $ \x -> case x of
 		TagDir t -> do
 			let tsNew = wipeTag t ts
-			writeIORef ref (updateStatus status tsNew)
+			updateStatusRef ref tsNew
 			return eOK
 		ExtendedBaseDir name -> do
 			let tags' = filter ((== name) . getName) (tags ts)
 			let tsNew = foldr wipeTag ts tags'
-			writeIORef ref (updateStatus status tsNew)
+			updateStatusRef ref tsNew
 			return eOK
 		_ -> return ePERM
 
@@ -260,7 +268,7 @@ tagfsRelease ref p h = do
 			content <- B.hGetContents h
 			let ts = getTagSet status
 			let tsNew = setTags (parseTags content) name ts
-			writeIORef ref (updateStatus status tsNew)
+			updateStatusRef ref tsNew
 		_ -> return ()
 	hClose h
 
@@ -284,7 +292,7 @@ tagfsCreateLink ref src dst = do
 				TagDir tag -> do
 					let ts = getTagSet status
 					let tsNew = addTag tag name ts
-					writeIORef ref (updateStatus status tsNew)
+					updateStatusRef ref tsNew
 					return eOK
 				_ -> return eINVAL
 		_ -> return eINVAL

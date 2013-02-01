@@ -11,6 +11,7 @@ import System.Environment
 import Data.Functor
 
 import FuseOperations
+import TagFS (TagSet)
 import Config
 
 {-ts :: TagSet
@@ -37,13 +38,20 @@ interpretArg s = do
 configPath :: FilePath
 configPath = "tagfs.conf"
 
+saveConfig :: FilePath -> Config -> TagSet -> IO ()
+saveConfig p c ts = do
+	let c' = c { tagSet = ts }
+	writeConfig p c'
+
 main :: IO ()
 main = do
 	conf <- fromMaybe emptyConfig <$> readConfig configPath
 	args <- getArgs
 	case args of
 		"mount":xs -> withArgs xs $ do
+			path <- canonicalizePath configPath
 			status <- newIORef $ newStatus (tagSet conf) (mapping conf)
+				(saveConfig path conf)
 			fuseMain (fsOps status) defaultExceptionHandler
 		"add":xs -> do
 			files <- concat <$> mapM interpretArg xs
