@@ -103,12 +103,6 @@ getEntryPath :: Entry -> FilePath
 getEntryPath (RegularFile p) = p
 getEntryPath (TagFile _ _ p) = p
 
-toRoute :: (FilePath -> Entry) -> FilePath -> Route Entry
-toRoute f name = match Nothing name >> return (f name)
-
-regularFile :: FilePath -> Route Entry
-regularFile = toRoute RegularFile
-
 allTags :: Set Tag -> Bool
 allTags = const True
 
@@ -189,8 +183,6 @@ tagDir tag@(Extended n v) = lift $ do
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
 	f <- gets predicate
-	--fs <- queryFiles f <$> gets tagSet
-	--lift $ choice $ map regularFile fs
 	fs <- queryFilesSet f <$> gets tagSet
 	s <- lift $ matchSet Nothing fs
 	return $ RegularFile s
