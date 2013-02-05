@@ -2,6 +2,7 @@ module TagFS (
 	Route, TagSet,
 	Tag(..),
 	getName, getValue,
+	File(..),
 	Entry(..),
 	Dir(..),
 	buildBaseRoute,
@@ -24,18 +25,21 @@ import Control.Monad.Trans.State
 import Data.Set (Set)
 import qualified Data.Set as S
 
+-- | A file of the real file system.
+newtype File = File { getPath :: FilePath }
+	deriving (Eq, Ord, Show, Read)
 
 {- |
 	A file in the tagfs file system.
 	
 	Currently, the following types of files occur:
 
-	* @'RegularFile' path@ – A file, wich points to a real file with name @path@
+	* @'RegularFile' file@ – A file, wich points to a real file @file@
 
-	* @'TagFile' tags name@ – A virtual file containing the @tags@ of the file @name@.
+	* @'TagFile' tags file@ – A virtual file containing the @tags@ of the file @file@.
 -}
-data Entry = RegularFile FilePath
-	| TagFile [Tag] FilePath
+data Entry = RegularFile File
+	| TagFile [Tag] File
 	deriving (Eq, Show, Read)
 
 
@@ -51,7 +55,7 @@ data Entry = RegularFile FilePath
 	  @name/value@ with two directories. The @value@ directory will be the
 	  'TagDir' of the tag, the @name@ directory is an @'ExtendedBaseDir' name@.
 
-	* 'Dir' – A default directory without special meaning (such as the root
+	* 'Dir' – A default directory with no special meaning (such as the root
 	  directory).
 -}
 data Dir = TagDir Tag
@@ -93,7 +97,7 @@ getValue (Extended _ v) = v
 
 -- | The 'TagSet.TagSet' used for the tagfs file system. It uses 'FilePath' for
 -- file names and 'Tag' for tags.
-type TagSet = T.TagSet FilePath Tag
+type TagSet = T.TagSet File Tag
 
 allTags :: Set Tag -> Bool
 allTags = const True
@@ -176,8 +180,8 @@ regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
 	f <- gets predicate
 	fs <- queryFilesSet f <$> gets tagSet
-	s <- lift $ matchSet Nothing fs
-	return $ RegularFile s
+	s <- lift $ matchSet Nothing (S.map getPath fs)
+	return $ RegularFile (File s)
 
 
 tagFileExt :: FilePath
@@ -185,17 +189,17 @@ tagFileExt = ".tags"
 
 tagFileRoute :: RouteBuilder Entry
 tagFileRoute = do
-	name <- lift $ capture Nothing findName
+	file <- lift $ capture Nothing getFile
 	f <- gets predicate
 	ts <- gets tagSet
 	let fs = queryFiles f ts
-	if name `notElem` fs then lift noRoute
+	if file `notElem` fs then lift noRoute
 	else do
-		let t = queryTags name ts
-		lift $ maybe noRoute (\t' -> return $ TagFile t' name) t
+		let t = queryTags file ts
+		lift $ maybe noRoute (\t' -> return $ TagFile t' file) t
 		where
-			findName n = case splitExtension n of
-				(name, ext) | ext == tagFileExt -> Just name
+			getFile n = case splitExtension n of
+				(name, ext) | ext == tagFileExt -> Just $ File name
 				_ -> Nothing
 
 -- helper function for easier routing

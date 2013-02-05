@@ -21,7 +21,7 @@ import Stat
 
 data Status = Status
 	{ getTagSet :: TagSet
-	, getFileMapping :: Map FilePath FilePath
+	, getFileMapping :: Map File FilePath
 	, getRoute :: Route Entry
 	, save :: TagSet -> IO ()
 	}
@@ -32,10 +32,10 @@ data Status = Status
 resetRoute :: Status -> Status
 resetRoute s = updateStatus s (getTagSet s)
 
-getRealPath :: Status -> FilePath -> FilePath
+getRealPath :: Status -> File -> FilePath
 getRealPath s p = fromMaybe "/dev/null" $ M.lookup p (getFileMapping s)
 
-newStatus :: TagSet -> Map FilePath FilePath -> (TagSet -> IO ()) -> Status
+newStatus :: TagSet -> Map File FilePath -> (TagSet -> IO ()) -> Status
 newStatus ts m s = Status ts m (buildBaseRoute ts) s
 
 updateStatus :: Status -> TagSet -> Status
