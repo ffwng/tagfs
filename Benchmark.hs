@@ -21,8 +21,8 @@ ts :: TagSet
 ts = fromFiles [] (map (\x -> (show x, [])) [1..10000 :: Int])
 
 entryInt :: Either Dir Entry -> Int
-entryInt (Left _) = 42
-entryInt (Right e) = length $ getEntryPath e
+entryInt (Left _) = 13
+entryInt (Right _) = 17
 
 ls :: Route Entry -> FilePath -> IO ()
 ls r p = do

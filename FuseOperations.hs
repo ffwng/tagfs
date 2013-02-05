@@ -61,7 +61,7 @@ getEntryStat :: Status -> FuseContext -> Entry -> IO FileStat
 --getEntryStat s _ (RegularFile name) = realFileStat $ getRealPath s name
 --getEntryStat _ ctx (RegularFile _) = return $ fileStat ctx (0 :: Integer)
 getEntryStat _ ctx (RegularFile _) = return $ linkStat ctx (256 :: Integer)
-getEntryStat _ ctx (TagFile ts _ _) = return $ fileStat ctx (tagFileContentLength ts)
+getEntryStat _ ctx (TagFile ts _) = return $ fileStat ctx (tagFileContentLength ts)
 
 getDirStat :: Status -> FuseContext -> Dir -> IO FileStat
 getDirStat _ ctx _ = return $ dirStat ctx
@@ -239,7 +239,7 @@ tagfsOpen ref p mode flags = do
 		RegularFile name -> do
 			h <- openFile (getRealPath status name) iomode
 			returnRight h
-		TagFile t _ _ -> do
+		TagFile t _ -> do
 			h <- tempFile
 			when (iomode /= WriteMode) $ B.hPut h (tagFileContent t)
 			when (iomode /= AppendMode) $ hSeek h AbsoluteSeek 0
@@ -263,7 +263,7 @@ tagfsRelease ref p h = do
 	status <- readIORef ref
 	let r = getRoute status
 	forFile r p (return ()) (const $ return ()) $ \x -> case x of
-		TagFile _ name _ -> do
+		TagFile _ name -> do
 			hSeek h AbsoluteSeek 0
 			content <- B.hGetContents h
 			let ts = getTagSet status

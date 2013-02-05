@@ -4,7 +4,6 @@ module TagFS (
 	getName, getValue,
 	Entry(..),
 	Dir(..),
-	getEntryPath,
 	buildBaseRoute,
 	route, route',
 	routeDir, routeDir',
@@ -33,12 +32,10 @@ import qualified Data.Set as S
 
 	* @'RegularFile' path@ – A file, wich points to a real file with name @path@
 
-	* @'TagFile' tags name path@ – A virtual file containing the @tags@ of the file
-	  @name@. The 'TagFile' itself has the file name @path@. Usually, this will be
-	  @name ++ \".tags\"@
+	* @'TagFile' tags name@ – A virtual file containing the @tags@ of the file @name@.
 -}
 data Entry = RegularFile FilePath
-	| TagFile [Tag] FilePath FilePath
+	| TagFile [Tag] FilePath
 	deriving (Eq, Show, Read)
 
 
@@ -97,11 +94,6 @@ getValue (Extended _ v) = v
 -- | The 'TagSet.TagSet' used for the tagfs file system. It uses 'FilePath' for
 -- file names and 'Tag' for tags.
 type TagSet = T.TagSet FilePath Tag
-
--- | Gets the path name of an 'Entry'.
-getEntryPath :: Entry -> FilePath
-getEntryPath (RegularFile p) = p
-getEntryPath (TagFile _ _ p) = p
 
 allTags :: Set Tag -> Bool
 allTags = const True
@@ -193,17 +185,17 @@ tagFileExt = ".tags"
 
 tagFileRoute :: RouteBuilder Entry
 tagFileRoute = do
-	(name, path) <- lift $ capture Nothing splitName
+	name <- lift $ capture Nothing findName
 	f <- gets predicate
 	ts <- gets tagSet
 	let fs = queryFiles f ts
 	if name `notElem` fs then lift noRoute
 	else do
 		let t = queryTags name ts
-		lift $ maybe noRoute (\t' -> return $ TagFile t' name path) t
+		lift $ maybe noRoute (\t' -> return $ TagFile t' name) t
 		where
-			splitName n = case splitExtension n of
-				(name, ext) | ext == tagFileExt -> Just (name, n)
+			findName n = case splitExtension n of
+				(name, ext) | ext == tagFileExt -> Just name
 				_ -> Nothing
 
 -- helper function for easier routing
