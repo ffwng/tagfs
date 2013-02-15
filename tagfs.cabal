@@ -26,7 +26,8 @@ executable tagfs
                         mtl ==2.1.*,
                         transformers ==0.3.*,
                         free ==3.3.*,
-                        directory ==1.2.*
+                        directory ==1.2.*,
+                        parsec
   ghc-options:          -Wall -threaded -rtsopts
   extensions:           DoAndIfThenElse
 
@@ -42,7 +43,8 @@ executable benchmark
                         mtl ==2.1.*,
                         transformers ==0.3.*,
                         free ==3.3.*,
-                        directory ==1.2.*
+                        directory ==1.2.*,
+                        parsec
   ghc-options:          -Wall -threaded -rtsopts
   extensions:           DoAndIfThenElse
 

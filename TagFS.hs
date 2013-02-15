@@ -15,6 +15,7 @@ import Route hiding (Route, route)
 import qualified Route as R
 import TagSet hiding (TagSet)
 import qualified TagSet as T
+import Predicate
 
 import System.FilePath
 import Control.Applicative
@@ -127,7 +128,7 @@ buildBaseRoute :: TagSet -> Route Entry
 buildBaseRoute ts = evalStateT buildSubRoute (makeStatus ts)
 
 buildSubRoute :: RouteBuilder Entry
-buildSubRoute = choice_ [filesRoute, tagDirsRoute]
+buildSubRoute = choice_ [filesRoute, tagDirsRoute, expressionRoutes]
 
 filesRoute :: RouteBuilder Entry
 filesRoute = choice_ [regularFileRoute, tagFileRoute]
@@ -160,7 +161,6 @@ logicalDirsRoute tag = choice_
 		>> logicalTagRoute (\f s -> f s || not (S.member tag s)) "not" tag
 	]
 
-
 logicalTagRoute :: ((Set Tag -> Bool) -> Set Tag -> Bool) -> String -> Tag
 	-> RouteBuilder Entry
 logicalTagRoute f funcname tag = do
@@ -168,6 +168,30 @@ logicalTagRoute f funcname tag = do
 	tagDir tag
 	modifyVisited (tag:)
 	modifyPredicate f
+	buildSubRoute
+
+expressionRoutes :: RouteBuilder Entry
+expressionRoutes = choice_
+	[ expressionRoute (&&)
+	, lift (match Nothing "not") >> expressionRoute (&&!)
+	, lift (match Nothing "and") >> expressionRoute (&&)
+	, lift (match Nothing "or") >> expressionRoute (||)
+	, lift (match Nothing "and" >> match Nothing "not") >> expressionRoute (&&!)
+	, lift (match Nothing "or" >> match Nothing "not") >> expressionRoute (||!)
+	]
+	where
+		a &&! b = a && not b
+		a ||! b = a || not b
+
+expressionRoute :: (Bool -> Bool -> Bool) -> RouteBuilder Entry
+expressionRoute op = do
+	tree <- lift $ capture Nothing (\s -> case s of '?':s' -> parse s'; _ -> Nothing)
+	let p s c = case c of
+		Exists v -> Simple v `S.member` s
+		Is Equals a (StringVal b) -> Extended a b `S.member` s
+		_ -> False
+	let m f s = f s `op` eval' (p s) tree
+	modifyPredicate m
 	buildSubRoute
 
 tagDir :: Tag -> RouteBuilder ()

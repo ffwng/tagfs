@@ -1,6 +1,6 @@
 module Predicate.Parser (
-	Expr(..), BOp(..), Op(..), Var(..), Val(..),
-	expression, parseString
+	Expr(..), BOp(..), Op(..), Var, Val(..),
+	expression, fullExpression, parseString
 ) where
 
 import Control.Monad.Identity
@@ -29,12 +29,12 @@ data Val = StringVal String | IntVal Integer
 
 languageDef :: LanguageDef st
 languageDef = emptyDef
-	{ Token.commentStart    = "/*"
-	, Token.commentEnd	   = "*/"
-	, Token.commentLine	   = "//"
-	, Token.identStart	   = letter
-	, Token.identLetter	   = alphaNum
-	, Token.reservedNames   = ["true", "false"]
+	{ Token.commentStart = "/*"
+	, Token.commentEnd = "*/"
+	, Token.commentLine = "//"
+	, Token.identStart = letter
+	, Token.identLetter = alphaNum
+	, Token.reservedNames = ["true", "false"]
 	, Token.reservedOpNames = [ ":", "=", "<", ">", "&&", "||", "!"]
 	}
 
@@ -56,8 +56,11 @@ parens = Token.parens lexer
 integer :: Parser Integer
 integer = Token.integer lexer
 
+fullExpression :: Parser Expr
+fullExpression = expression <* eof
+
 expression :: Parser Expr
-expression = buildExpressionParser operators term <* eof
+expression = buildExpressionParser operators term
 
 operators :: OperatorTable String () Identity Expr
 operators = [ [Prefix (reservedOp "!" >> return Not)]
@@ -91,6 +94,6 @@ relation = (reservedOp ">" >> return Greater)
 	<|> (reservedOp "=" >> return Equals)
 
 parseString :: String -> Maybe Expr
-parseString str = case parse expression "" str of
-	Left e -> Nothing
+parseString str = case parse fullExpression "" str of
+	Left _ -> Nothing
 	Right r -> Just r

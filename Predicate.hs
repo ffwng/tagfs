@@ -1,9 +1,10 @@
 {-# LANGUAGE DeriveFunctor #-}
 module Predicate (
 	Condition(..), ECondition(..),
+	Var, Val(..), Op(..),
 	Tree,
 	parse, interpret, eval,
-	evalString
+	eval', evalString
 ) where
 
 import Data.Functor
@@ -43,5 +44,8 @@ eval (Free (And a b)) = eval a && eval b
 eval (Free (Or a b)) = eval a || eval b
 eval (Free (Not a)) = not $ eval a
 
+eval' :: (Condition -> Bool) -> Tree ECondition -> Bool
+eval' f = eval . interpret f
+
 evalString :: (Condition -> Bool) -> String -> Maybe Bool
-evalString f s = eval . interpret f <$> parse s
+evalString f s = eval' f <$> parse s
