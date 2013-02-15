@@ -3,7 +3,8 @@ module Route (
 	Route,
 	route,
 	getBranch,
-	match, matchSet, capture, choice, noRoute
+	match, matchSet, capture,
+	captureBool, choice, noRoute
 ) where
 
 import Control.Monad
@@ -168,6 +169,11 @@ matchSet t s = Route $ liftF (MatchSet t s id)
 --   The captured segment is tagged with t.
 capture :: t -> (s -> Maybe a) -> Route s t a
 capture t f = Route $ liftF (Capture t f)
+
+captureBool :: t -> (s -> Bool) -> Route s t s
+captureBool t f = capture t $ \s -> case f s of
+	True -> Just s
+	False -> Nothing
 
 -- | Propes a list of routes and takes the first one, that does not fail.
 --   Equivalent to 'msum', but more efficient.
