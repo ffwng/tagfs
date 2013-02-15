@@ -233,20 +233,16 @@ tagFileRoute = do
 
 -- helper function for easier routing
 
--- | This is an alternative file path seperator, which can be used for extended tags.
--- The current value ist \':\'. So @name/value@ and @name:value@ refer to the same path.
+-- | Represents the seperator used to seperate name and value of extended tags.
+-- The current value is ':'.
 tagSep :: Char
 tagSep = ':'
 
--- todo: handle ':'-handling in tagDirRoute
 -- | Splits a 'FilePath' in a list of directories. The path is expected to begin
--- with \'\/\'. It is splitted on every \'\/\' (but the first one) and 'tagSep'.
+-- with \'\/\'. It is splitted on every \'\/\' (but the first one).
 split :: FilePath -> [FilePath]
-split p = split' p
-
-split' :: FilePath -> [FilePath]
-split' [] = error "split': empty list"
-split' (_:ps) = splitDirectories ps
+split [] = error "split': empty list"
+split (_:ps) = splitDirectories ps
 
 -- | Routes a given path. Performs splitting with 'split' and wraps
 -- 'Route.route', giving a nicer return type.
