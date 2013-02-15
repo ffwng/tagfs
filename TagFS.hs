@@ -117,6 +117,9 @@ choice_ l = do
 	put state2
 	return a
 
+matchHidden :: Maybe Dir -> FilePath -> Route ()
+matchHidden t s = captureBool t (== s) >> return ()
+
 modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
 modifyVisited f = modify (\s -> s { visited = f (visited s) })
 
@@ -196,9 +199,11 @@ expressionRoute op = do
 
 tagDir :: Tag -> RouteBuilder ()
 tagDir tag@(Simple n) = lift $ match (Just $ TagDir tag) n
-tagDir tag@(Extended n v) = lift $ do
-	match (Just $ ExtendedBaseDir n) n
-	match (Just $ TagDir tag) v
+tagDir tag@(Extended n v) =
+	lift (matchHidden (Just $ TagDir tag) (n ++ tagSep:v)) <|>
+	lift (do
+		match (Just $ ExtendedBaseDir n) n
+		match (Just $ TagDir tag) v)
 
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
@@ -237,9 +242,7 @@ tagSep = ':'
 -- | Splits a 'FilePath' in a list of directories. The path is expected to begin
 -- with \'\/\'. It is splitted on every \'\/\' (but the first one) and 'tagSep'.
 split :: FilePath -> [FilePath]
-split p = split' (map f p) where
-	f x | x == tagSep = pathSeparator
-	f x = x
+split p = split' p
 
 split' :: FilePath -> [FilePath]
 split' [] = error "split': empty list"
