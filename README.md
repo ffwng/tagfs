@@ -149,6 +149,10 @@ with (*europe* and not *asia* and not *australia*) or *type:holiday* (an
 extended tag). No parantheses are needed, because `&&` has higher priority than
 `||`.
 
+Whitespace is ignored. A tag name (or value) may only consist of alphanumeric characters
+and may not start with a digit. Otherwise it has no be enclosed in quotation
+marks (e.g. `"unusual tag":"1st value of unusual tag"`).
+
 ## File System Operations
 
 ### Creating tags
