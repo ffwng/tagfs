@@ -124,6 +124,31 @@ That is, `/holiday/and/europe/or/asia` will give all files tagged with
 ( *holiday* and *europe* ) or *asia*. `holiday/or/asia/and/europe` on the other
 hand will select all files tagged with ( *holiday* or *asia* ) and *europe*.
 
+### Conditional Tag Directories
+
+Sometimes the tag directories given are not powerful enough to express certain
+condition on tags. Conditional tag directories offer a more flexible approach to
+include or exclude files. These directories are not part of the directory
+listing, because this would totaly mess it up.
+
+Their names begin with a question mark, then follows an arbitrary condition.
+Conditions can be build with `&&` (and), `||` (or) and `!` (not), `&&` has a
+higher priority than `||`.
+A condition can be a name of a simple tag or of the form `name:value` or
+`name=value` for some extended tag *name:value*. In future, additional operators
+for extended tags (like *>*, *>=* etc.) will be supported. Non-existing tags
+will be ignored and considered false. Additionally, the constants `true` and
+`false` can be used, if wanted.
+
+Some examples:
+
+`cd '?holiday && (europe || asia)'` – selects all files tagged with *holiday*
+and (*europe* or *asia*).
+`cd '?europe && !asia && !australia || type:holiday` – selects all files tagged
+with (*europe* and not *asia* and not *australia*) or *type:holiday* (an
+extended tag). No parantheses are needed, because `&&` has higher priority than
+`||`.
+
 ## File System Operations
 
 ### Creating tags
