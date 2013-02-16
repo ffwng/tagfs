@@ -124,34 +124,59 @@ That is, `/holiday/and/europe/or/asia` will give all files tagged with
 ( *holiday* and *europe* ) or *asia*. `holiday/or/asia/and/europe` on the other
 hand will select all files tagged with ( *holiday* or *asia* ) and *europe*.
 
-### Conditional Tag Directories
+### Tag Directories with other conditions
 
-Sometimes the tag directories given are not powerful enough to express certain
-condition on tags. Conditional tag directories offer a more flexible approach to
-include or exclude files. These directories are not part of the directory
-listing, because this would totaly mess it up.
+Given the structure described above, not all conditions on tags can be
+described, mostly due to the restriction, that operatores always associate to
+the left. For instance, given tags *a*, *b*, *c* and *d*, it is not possible to
+filter exactly that files, that are tagged ( *a* or *b* ) and ( *b* or *c* ).
+However, another kind of directories exists, which allows arbitrary conditions,
+given as directory name, to get applied. They are not contained within the
+directory listing, though, as infinitely many of them exist.
 
-Their names begin with a question mark, then follows an arbitrary condition.
-Conditions can be build with `&&` (and), `||` (or) and `!` (not), `&&` has a
-higher priority than `||`.
-A condition can be a name of a simple tag or of the form `name:value` or
-`name=value` for some extended tag *name:value*. In future, additional operators
-for extended tags (like *>*, *>=* etc.) will be supported. Non-existing tags
-will be ignored and considered false. Additionally, the constants `true` and
-`false` can be used, if wanted.
+To get all files statisfying a certain condition *cond*, use the directory named
+*?cond*. Additionally, *and/?cond* (equivalent to *?cond*, *or/?cond*,
+*not/?cond*, *and/not/?cond* (equivalent to *not/?cond*) and *or/not/?cond* can
+be used. The condition is always applied to the current set of files.
 
-Some examples:
+Any tag *t* (written as *name* for simple tags, *name:value* for extended tags)
+is a condition, which is true for a file *f* iff *f* is tagged with *t*. If a
+name or value contains non-alphanumeric characters (also whitespace) or begins
+with a digit, it needs to be enclosed in quotation marks (`"`). If the tag
+does not exist, the condition is always false.
 
-`cd '?holiday && (europe || asia)'` – selects all files tagged with *holiday*
-and (*europe* or *asia*).
-`cd '?europe && !asia && !australia || type:holiday` – selects all files tagged
-with (*europe* and not *asia* and not *australia*) or *type:holiday* (an
-extended tag). No parantheses are needed, because `&&` has higher priority than
-`||`.
+Conditions can be combined using the operators `&&` (and), `||` (or) and `!`
+(not) to form more complex condition.  So `a && b` is true for *f*, iff *f* is
+tagged with *a* and with *b*, `!a` is true for *f*, iff *f* is not tagged with
+*a*. `!` has highest priority, `&&` has a higher priority then `||`. Parens can
+be used to explicitely group terms.
 
-Whitespace is ignored. A tag name (or value) may only consist of alphanumeric characters
-and may not start with a digit. Otherwise it has no be enclosed in quotation
-marks (e.g. `"unusual tag":"1st value of unusual tag"`).
+The special condition `true` is always true, `false` is always
+false.
+
+Another kind of condition has the form *name op value*, where *name* is a name
+of a tag (subject to the same rules described above), *op* is a relational
+operator (=, <, <=, >, >=; only = is supported for the moment) and
+*value* is either a name or an integer (to treat an integer like a string,
+enclose it in quotation marks). This condition is true for a file *f*, iff *f*
+is tagged with an extended tag, whose name is *name*, and *value* *op* *v* is
+true, where *v* is the value of this extended tag. For strings, lexiographic
+comparisments are done, for integers, *v* is converted to an integer first (if
+this fails, the condition is false).
+Note: A condition *name=value* is equivalent to *name:value* (and only provided
+for consistency).
+Note: A file can be tagged with many extended tags with the same name. In that
+case, according to the above definition, any such extended tag statisfying the
+relation will make the condition true.
+Note: *<* is not the opposite of *>=*. For instance, `name < a` and `name >= a`
+are both false, if the file is not tagged with an extended tag named *name*.
+They can also be both true, if the file is tagged with an extended tag named
+*name* multiple times. The same applies to the other operators.
+
+Whitespace outside of quotation marks is ignored, so `a&&b` and `a && b` are
+equivalent. Condition can be commented using `/* */` (for a comment inside the
+condition) or `//` (comment extends to the end of condition). These comments are
+ignored.
 
 ## File System Operations
 
