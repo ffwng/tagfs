@@ -186,16 +186,42 @@ expressionRoutes = choice_
 		a &&! b = a && not b
 		a ||! b = a || not b
 
+readMay :: Read a => String -> Maybe a
+readMay s = case [x | (x,t) <- reads s, ("","") <- lex t] of
+				[x] -> Just x
+				_ -> Nothing
+
 expressionRoute :: (Bool -> Bool -> Bool) -> RouteBuilder Entry
 expressionRoute op = do
 	tree <- lift $ capture Nothing (\s -> case s of '?':s' -> parse s'; _ -> Nothing)
 	let p s c = case c of
 		Exists v -> Simple v `S.member` s
 		Is Equals a (StringVal b) -> Extended a b `S.member` s
-		_ -> False
+		Is o a b -> findTag s o a b
 	let m f s = f s `op` eval' (p s) tree
 	modifyPredicate m
 	buildSubRoute
+	where
+		findTag :: Set Tag -> Op -> Var -> Val -> Bool
+		findTag s o a (StringVal b) = find (getOp o) (vals Just s a) b
+		findTag s o a (IntVal b) = find (getOp o) (vals readMay s a) b
+
+		vals :: (String -> Maybe a) -> Set Tag -> String -> [a]
+		vals f s n = mapMaybe p $ S.elems s where
+			p (Extended n' v) | n' == n = f v
+			p _ = Nothing
+
+		getOp :: Ord a => Op -> a -> a -> Bool
+		getOp Equals = (==)
+		getOp Greater = (>)
+		getOp Less = (<)
+		getOp GreaterThan = (>=)
+		getOp LessThan = (<=)
+
+		find :: Ord a => (a -> a -> Bool) -> [a] -> a -> Bool
+		find o l b = any (`o` b) l
+
+
 
 tagDir :: Tag -> RouteBuilder ()
 tagDir tag@(Simple n) = lift $ match (Just $ TagDir tag) n

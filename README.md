@@ -156,13 +156,12 @@ false.
 
 Another kind of condition has the form *name op value*, where *name* is a name
 of a tag (subject to the same rules described above), *op* is a relational
-operator (=, <, <=, >, >=; only = is supported for the moment) and
-*value* is either a name or an integer (to treat an integer like a string,
-enclose it in quotation marks). This condition is true for a file *f*, iff *f*
-is tagged with an extended tag, whose name is *name*, and *value* *op* *v* is
-true, where *v* is the value of this extended tag. For strings, lexiographic
-comparisments are done, for integers, *v* is converted to an integer first (if
-this fails, the condition is false).
+operator (= (or ==), <, <=, >, >=) and *value* is either a name or an integer
+(to treat an integer like a string, enclose it in quotation marks). This
+condition is true for a file *f*, iff *f* is tagged with an extended tag, whose
+name is *name*, and *value* *op* *v* is true, where *v* is the value of this
+extended tag. For strings, lexiographic comparisments are done, for integers,
+*v* is converted to an integer first (if this fails, the condition is false).
 Note: A condition *name=value* is equivalent to *name:value* (and only provided
 for consistency).
 Note: A file can be tagged with many extended tags with the same name. In that

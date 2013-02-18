@@ -20,7 +20,7 @@ data Expr = Const Bool
 
 data BOp = And | Or deriving (Show)
 
-data Op = Equals | Greater | Less deriving (Show)
+data Op = Equals | Greater | Less | GreaterThan | LessThan deriving (Show)
 
 type Var = String
 
@@ -88,9 +88,12 @@ leaf = do
 		return $ LeafOp op a1 a2
 
 relation :: Parser Op
-relation = (reservedOp ">" >> return Greater)
+relation = (reservedOp ">=" >> return GreaterThan)
+	<|> (reservedOp "<=" >> return LessThan)
+	<|> (reservedOp ">" >> return Greater)
 	<|> (reservedOp "<" >> return Less)
 	<|> (reservedOp ":" >> return Equals)
+	<|> (reservedOp "==" >> return Equals)
 	<|> (reservedOp "=" >> return Equals)
 
 parseString :: String -> Maybe Expr
