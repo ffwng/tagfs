@@ -32,7 +32,7 @@ ls r p = do
 	let stated = map (\(f,_) -> fromJust $ route r (p </> f)) entries
 	-- perform evaluation
 	let res = sum (map entryInt stated)
-	putStrLn $ show res
+	print res
 
 main :: IO ()
 main = do

@@ -36,7 +36,7 @@ getRealPath :: Status -> File -> FilePath
 getRealPath s p = fromMaybe "/dev/null" $ M.lookup p (getFileMapping s)
 
 newStatus :: TagSet -> Map File FilePath -> (TagSet -> IO ()) -> Status
-newStatus ts m s = Status ts m (buildBaseRoute ts) s
+newStatus ts m = Status ts m (buildBaseRoute ts)
 
 updateStatus :: Status -> TagSet -> Status
 updateStatus s ts = s { getTagSet = ts, getRoute = buildBaseRoute ts }

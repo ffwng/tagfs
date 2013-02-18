@@ -3,6 +3,7 @@ module Config where
 import TagFS (TagSet, Tag, File(..))
 import qualified TagSet as T
 import qualified Data.Map as M
+import Control.Monad
 import Data.Functor
 import Control.Exception
 import System.IO
@@ -18,7 +19,7 @@ emptyConfig = Config T.emptyTagSet M.empty
 
 readConfig :: FilePath -> IO (Maybe Config)
 readConfig f = either foo Just
-	<$> try (withFile f ReadMode $ \h -> bar =<< hGetContents h)
+	<$> try (withFile f ReadMode $ hGetContents >=> bar)
 	where
 		foo :: SomeException -> Maybe Config  -- resolves ambiguities of Exception
 		foo _ = Nothing

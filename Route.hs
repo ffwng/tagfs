@@ -171,9 +171,7 @@ capture :: t -> (s -> Maybe a) -> Route s t a
 capture t f = Route $ liftF (Capture t f)
 
 captureBool :: t -> (s -> Bool) -> Route s t s
-captureBool t f = capture t $ \s -> case f s of
-	True -> Just s
-	False -> Nothing
+captureBool t f = capture t $ \s -> if f s then Just s else Nothing
 
 -- | Propes a list of routes and takes the first one, that does not fail.
 --   Equivalent to 'msum', but more efficient.

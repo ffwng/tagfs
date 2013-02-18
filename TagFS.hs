@@ -21,6 +21,7 @@ import System.FilePath
 import Control.Applicative
 import Control.Arrow
 import Data.Maybe
+import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Data.Set (Set)
@@ -118,7 +119,7 @@ choice_ l = do
 	return a
 
 matchHidden :: Maybe Dir -> FilePath -> Route ()
-matchHidden t s = captureBool t (== s) >> return ()
+matchHidden t s = void $ captureBool t (== s)
 
 modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
 modifyVisited f = modify (\s -> s { visited = f (visited s) })
