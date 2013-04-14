@@ -64,4 +64,6 @@ main = do
 		Tag t fs -> do
 			let conf' = foldr (Config.tagFile t) conf fs
 			writeConfig configPath conf'
-		TagFile _ _ -> putStrLn "not implemented"
+		TagFile f ts -> do
+			let conf' = foldr (flip Config.tagFile f) conf ts
+			writeConfig configPath conf'
