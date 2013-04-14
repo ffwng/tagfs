@@ -17,6 +17,7 @@ executable tagfs
                         TagFS
                         TagFS.Tag
                         TagSet
+                        CLI
   build-depends:        base ==4.6.*,
                         text ==0.11.*,
                         HFuse ==0.2.*,
@@ -28,7 +29,8 @@ executable tagfs
                         transformers ==0.3.*,
                         free ==3.*,
                         directory ==1.2.*,
-                        parsec
+                        parsec,
+                        optparse-applicative
   ghc-options:          -Wall -threaded -rtsopts
   extensions:           DoAndIfThenElse
 

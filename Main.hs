@@ -12,8 +12,8 @@ import Data.Functor
 
 import FuseOperations
 import TagFS (TagSet)
-import TagFS.Tag (parseTag)
 import Config
+import CLI
 
 {-ts :: TagSet
 ts = fromFiles [Simple "bar", Extended "loc" "hier", Extended "loc" "da"]
@@ -47,23 +47,21 @@ saveConfig p c ts = do
 main :: IO ()
 main = do
 	conf <- fromMaybe emptyConfig <$> readConfig configPath
-	args <- getArgs
-	case args of
-		"mount":xs -> withArgs xs $ do
+	cmd <- execParser tagfsCLI
+	case cmd of
+		Mount args -> withArgs args $ do
 			path <- canonicalizePath configPath
 			status <- newIORef $ newStatus (tagSet conf) (mapping conf)
 				(saveConfig path conf)
 			fuseMain (fsOps status) defaultExceptionHandler
-		"add":xs -> do
-			files <- concat <$> mapM interpretArg xs
+		AddFiles fs -> do
+			files <- concat <$> mapM interpretArg fs
 			let conf' = foldr Config.addFile conf files
 			writeConfig configPath conf'
-		"remove":xs -> do
-			let conf' = foldr Config.removeFile conf xs
+		RemoveFiles fs -> do
+			let conf' = foldr Config.removeFile conf fs
 			writeConfig configPath conf'
-		"tag":t:xs -> case parseTag t of
-			Just t' -> do
-				let conf' = foldr (Config.tagFile t') conf xs
-				writeConfig configPath conf'
-			_ -> return ()
-		_ -> putStrLn "could not interpret argument"
+		Tag t fs -> do
+			let conf' = foldr (Config.tagFile t) conf fs
+			writeConfig configPath conf'
+		TagFile _ _ -> putStrLn "not implemented"
