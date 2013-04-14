@@ -24,7 +24,6 @@ import System.FilePath
 import Control.Applicative
 import Control.Arrow
 import Data.Maybe
-import Control.Monad
 import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Data.Set (Set)
@@ -88,9 +87,6 @@ choice_ l = do
 	(a, state2) <- lift . choice $ map (`runStateT` state1) l
 	put state2
 	return a
-
-matchHidden :: Maybe Dir -> FilePath -> Route ()
-matchHidden t s = void $ captureBool t (== s)
 
 modifyVisited :: ([Tag] -> [Tag]) -> RouteBuilder ()
 modifyVisited f = modify (\s -> s { visited = f (visited s) })
@@ -165,7 +161,7 @@ readMay s = case [x | (x,t) <- reads s, ("","") <- lex t] of
 
 expressionRoute :: (Bool -> Bool -> Bool) -> RouteBuilder Entry
 expressionRoute op = do
-	tree <- lift $ capture Nothing (\s -> case s of '?':s' -> parse s'; _ -> Nothing)
+	tree <- lift $ capture [] Nothing (\s -> case s of '?':s' -> parse s'; _ -> Nothing)
 	let p s c = case c of
 		Exists v -> Simple v `S.member` s
 		Is Equals a (StringVal b) -> Extended a b `S.member` s
@@ -216,7 +212,7 @@ tagFileExt = ".tags"
 
 tagFileRoute :: RouteBuilder Entry
 tagFileRoute = do
-	file <- lift $ capture Nothing getFile
+	file <- lift $ capture [] Nothing getFile
 	f <- gets predicate
 	ts <- gets tagSet
 	let fs = queryFiles f ts

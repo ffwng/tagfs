@@ -3,7 +3,7 @@ module Route (
 	Route,
 	route,
 	getBranch,
-	match, matchSet, capture,
+	match, matchHidden, matchSet, capture,
 	captureBool, choice, noRoute
 ) where
 
@@ -18,9 +18,7 @@ import Data.Set (Set)
 import qualified Data.Set as S
 
 data Segment s t a =
-	  Match t s a
-	| MatchSet t (Set s) (s -> a)
-	| Capture t (s -> Maybe a)
+	  Capture [s] t (s -> Maybe a)
 	| Choice [a]
 	| NoRoute
 	deriving (Functor)
@@ -100,9 +98,7 @@ route bt r bs = get bt bs (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
 	get t [] _ = Just $ Left t
 	get t xs (Free (Choice as)) = msum $ map (get t xs) as
-	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
-	get _ (x:xs) (Free (MatchSet t s f)) | x `S.member` s = get t xs (f x)
-	get _ (x:xs) (Free (Capture t f)) = get t xs =<< f x
+	get _ (x:xs) (Free (Capture _ t f)) = get t xs =<< f x
 	get _ _ _ = Nothing
 
 -- nubs a sorted list
@@ -134,14 +130,10 @@ sortedNubBy f (a:b:xs) = a : sortedNubBy f (b:xs)
 getBranch :: Ord s => t -> Route s t a -> [s] -> Maybe (Either [(s, Either t (a, t))] (a, t))
 getBranch bt r bs = get bt bs (unRoute r) where
 	get t [] (Pure a) = Just $ Right (a, t)
-	get _ (x:xs) (Free (Match t s a)) | s == x = get t xs a
-	get _ [] (Free (Match t s a)) = Just $ Left [(s, getPure t a)]
-	get _ (x:xs) (Free (MatchSet t s f)) | x `S.member` s = get t xs (f x)
-	get _ [] (Free (MatchSet t s f)) = Just . Left . map (\x -> (x, getPure t (f x)))
-		$ S.elems s
-	get _ (x:xs) (Free (Capture t f)) = get t xs =<< f x
-	get _ [] (Free (Capture _ _)) = Just $ Left []
-	get t xs (Free (Choice as)) = interpret' . catMaybes $ map (get t xs) as
+	get _ (x:xs) (Free (Capture _ t f)) = get t xs =<< f x
+	get _ [] (Free (Capture es t f)) = Just . Left $
+		mapMaybe (\s -> (s,) . getPure t <$> f s) es
+	get t xs (Free (Choice as)) = interpret' $ mapMaybe (get t xs) as
 	get _ _ _ = Nothing
 
 	interpret' [] = Nothing
@@ -154,24 +146,40 @@ getBranch bt r bs = get bt bs (unRoute r) where
 	getPure t (Pure a) = Right (a, t)
 	getPure t _ = Left t
 
+boolToMaybe :: Bool -> a -> Maybe a
+boolToMaybe True a = Just a
+boolToMaybe False _ = Nothing
+
+match' :: Eq s => [s] -> t -> s -> Route s t ()
+match' es t s = capture es t (\s' -> boolToMaybe (s == s') ())
+
 -- | A route which matches the segment @s@ tagged with @t@. If an other segment is provided,
 --   the route fails.
-match :: t -> s -> Route s t ()
-match t s = Route $ liftF (Match t s ())
+match :: Eq s => t -> s -> Route s t ()
+match t s = match' [s] t s
+
+-- | Like 'match', but the generated segment is not shown by 'getBranch'.
+matchHidden :: Eq s => t -> s -> Route s t ()
+matchHidden t s = match' [] t s
 
 -- | A route which matches any segment from the 'Set' @s@ tagged with @t@. It returns the
 --   actually matched segment.
-matchSet :: t -> Set s -> Route s t s
-matchSet t s = Route $ liftF (MatchSet t s id)
+matchSet :: Ord s => t -> Set s -> Route s t s
+matchSet t s = capture (S.elems s) t (\s' -> boolToMaybe (s' `S.member` s) s')
 
 -- | A route which matches based of @f@. If for the given segment, @f s@ is
 --   @Just a@, @a@ is returned, if it is @Nothing@, the route fails.
 --   The captured segment is tagged with t.
-capture :: t -> (s -> Maybe a) -> Route s t a
-capture t f = Route $ liftF (Capture t f)
+--   The first parameter is a list of expected segments and used by 'getBranch'. This
+--   list should not contain elements, for which the given function would return Nothing,
+--   but may hide some elements, wich would actually match.
+capture :: [s] -> t -> (s -> Maybe a) -> Route s t a
+capture es t f = Route $ liftF (Capture es t f)
 
-captureBool :: t -> (s -> Bool) -> Route s t s
-captureBool t f = capture t $ \s -> if f s then Just s else Nothing
+-- | Matches all segments for which the given function returns 'True'.
+--   The result of the route is the matched segment.
+captureBool :: [s] -> t -> (s -> Bool) -> Route s t s
+captureBool es t f = capture es t $ \s -> boolToMaybe (f s) s
 
 -- | Propes a list of routes and takes the first one, that does not fail.
 --   Equivalent to 'msum', but more efficient.
