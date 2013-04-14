@@ -7,6 +7,7 @@ module CLI (
 import TagFS.Tag
 
 import Options.Applicative
+import Options.Applicative.Builder.Internal (Mod, OptionFields)
 
 data Command =
 	Mount [String] |
@@ -30,14 +31,16 @@ addFiles = AddFiles <$> args "FILES"
 removeFiles :: Parser Command
 removeFiles = RemoveFiles <$> args "FILES"
 
-tag' :: Parser Tag
-tag' = argument parseTag (metavar "TAG")
+maybeReader :: String -> (String -> Maybe a) -> Mod OptionFields a
+maybeReader e f = reader (maybe (Left $ ErrorMsg e) Right . f)
 
 tag :: Parser Command
-tag = Tag <$> tag' <*> args "FILES"
+tag = Tag <$> nullOption (maybeReader "Error: invalid tag." parseTag
+	<> short 't' <> long "tag" <> metavar "TAG") <*> args "FILES"
 
 tagFile :: Parser Command
-tagFile = TagFile <$> argument Just (metavar "FILE") <*> arguments parseTag (metavar "TAGS")
+tagFile = TagFile <$> strOption (short 'f' <> long "file" <> metavar "FILE")
+	<*> arguments parseTag (metavar "TAGS")
 
 tagfsCommand :: Parser Command
 tagfsCommand = subparser
