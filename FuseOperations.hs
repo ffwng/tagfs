@@ -66,18 +66,6 @@ getEntryStat _ ctx (TagFile ts _) = return $ fileStat ctx (tagFileContentLength 
 getDirStat :: Status -> FuseContext -> Dir -> IO FileStat
 getDirStat _ ctx _ = return $ dirStat ctx
 
-parseTag :: String -> Maybe Tag
-parseTag s = case span (/= tagSep) s of
-	(n, []) | notNull n -> Just (Simple n)
-	(n, _:v) | notNull n && notNull v -> Just (Extended n v)
-	_ -> Nothing
-	where
-		notNull = not . null
-
-formatTag :: Tag -> String
-formatTag (Simple n) = n
-formatTag (Extended n v) = n ++ tagSep:v
-
 tagFileContent :: [Tag] -> ByteString
 tagFileContent = B.pack . unlines . map formatTag
 

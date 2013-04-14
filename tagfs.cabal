@@ -15,6 +15,7 @@ executable tagfs
                         Route
                         Stat
                         TagFS
+                        TagFS.Tag
                         TagSet
   build-depends:        base ==4.6.*,
                         text ==0.11.*,

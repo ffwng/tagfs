@@ -1,15 +1,16 @@
 module TagFS (
 	Route, TagSet,
-	Tag(..),
-	getName, getValue,
 	File(..),
 	Entry(..),
 	Dir(..),
 	buildBaseRoute,
 	route, route',
 	routeDir, routeDir',
-	split, tagSep
+	split,
+	module TagFS.Tag
 ) where
+
+import TagFS.Tag (Tag(..), getName, getValue, parseTag, formatTag)
 
 import Route hiding (Route, route)
 import qualified Route as R
@@ -68,34 +69,6 @@ data Dir = TagDir Tag
 -- | The 'Route.Route' used for the tagfs file system. It uses 'FilePath' for the path
 -- segments and @('Maybe' 'Dir')@ as directory tags.
 type Route = R.Route FilePath (Maybe Dir)
-
-{- |
-	A tag of a file. There are two possible forms of tags:
-
-	* Simple tags: these tags have a name and act as simple
-	  on/off tags. Either they are present or not for a given file. A file may not
-	  have two simple tags of the same name.
-
-	* Extended tags: these tags have a name and an associated 'String' value.
-	  This way, further information can be provided, when these tags are present.
-	  A file can have multiple extended tags with the same name but different values,
-	  but no two extended tags of the same name and value.
-
-	It is possible but highly discouraged to have a file with a simple and an
-	extended tag of the same name.
--}
-data Tag = Simple String | Extended String String
-	deriving (Eq, Ord, Show, Read)
-
--- | Extracts the name of a 'Tag'.
-getName :: Tag -> String
-getName (Simple n) = n
-getName (Extended n _) = n
-
--- | Extracts the value of a 'Tag'. For simple tags, the name is returned instead.
-getValue :: Tag -> String
-getValue (Simple v) = v
-getValue (Extended _ v) = v
 
 -- | The 'TagSet.TagSet' used for the tagfs file system. It uses 'FilePath' for
 -- file names and 'Tag' for tags.
@@ -227,7 +200,7 @@ expressionRoute op = do
 tagDir :: Tag -> RouteBuilder ()
 tagDir tag@(Simple n) = lift $ match (Just $ TagDir tag) n
 tagDir tag@(Extended n v) =
-	lift (matchHidden (Just $ TagDir tag) (n ++ tagSep:v)) <|>
+	lift (matchHidden (Just $ TagDir tag) (formatTag tag)) <|>
 	lift (do
 		match (Just $ ExtendedBaseDir n) n
 		match (Just $ TagDir tag) v)
@@ -259,11 +232,6 @@ tagFileRoute = do
 				_ -> Nothing
 
 -- helper function for easier routing
-
--- | Represents the seperator used to seperate name and value of extended tags.
--- The current value is ':'.
-tagSep :: Char
-tagSep = ':'
 
 -- | Splits a 'FilePath' in a list of directories. The path is expected to begin
 -- with \'\/\'. It is splitted on every \'\/\' (but the first one).

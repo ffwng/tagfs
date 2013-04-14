@@ -12,6 +12,7 @@ import Data.Functor
 
 import FuseOperations
 import TagFS (TagSet)
+import TagFS.Tag (parseTag)
 import Config
 
 {-ts :: TagSet
