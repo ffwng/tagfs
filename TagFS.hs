@@ -7,10 +7,12 @@ module TagFS (
 	route, route',
 	routeDir, routeDir',
 	split,
-	module TagFS.Tag
+	module TagFS.Tag,
+	module TagFS.File
 ) where
 
 import TagFS.Tag (Tag(..), getName, getValue, parseTag, formatTag)
+import TagFS.File (File(..))
 
 import Route hiding (Route, route)
 import qualified Route as R
@@ -27,10 +29,6 @@ import Control.Monad.Trans
 import Control.Monad.Trans.State
 import Data.Set (Set)
 import qualified Data.Set as S
-
--- | A file of the real file system.
-newtype File = File { getPath :: FilePath }
-	deriving (Eq, Ord, Show, Read)
 
 {- |
 	A file in the tagfs file system.

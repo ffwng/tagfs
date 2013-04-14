@@ -16,6 +16,7 @@ executable tagfs
                         Stat
                         TagFS
                         TagFS.Tag
+                        TagFS.File
                         TagSet
                         CLI
   build-depends:        base ==4.6.*,
