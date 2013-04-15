@@ -18,7 +18,7 @@ benchmark name io = do
 
 
 ts :: TagSet
-ts = fromFiles [] (map (\x -> (File $ show x, [])) [1..10000 :: Int])
+ts = fromFiles [] (map (\x -> (File [show x], [])) [1..10000 :: Int])
 
 entryInt :: Either Dir Entry -> Int
 entryInt (Left _) = 13
