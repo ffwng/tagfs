@@ -200,18 +200,19 @@ tagDir tag@(Extended n v) =
 		match (Just $ ExtendedBaseDir n) n
 		match (Just $ TagDir tag) v)
 
-fsTreeRoute :: F.FSTree a -> Route a
-fsTreeRoute (F.Leaf s a) = match Nothing s >> return a
-fsTreeRoute (F.Branch s l) = do
-	match Nothing s
-	choice $ map fsTreeRoute l
+fsTreesRoute :: [F.FSTree a] -> Route a
+fsTreesRoute = choice . map go where
+	go (F.Leaf s a) = match Nothing s >> return a
+	go (F.Branch s l) = do
+		match Nothing s
+		fsTreesRoute l
 
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
 	p <- gets predicate
 	fs <- queryFiles p <$> gets tagSet
 	--s <- lift $ matchSet Nothing (S.map getPath fs)
-	f <- lift . fsTreeRoute $ F.makeFSTree fs
+	f <- lift . fsTreesRoute $ F.makeFSTrees fs
 	return $ RegularFile f
 
 

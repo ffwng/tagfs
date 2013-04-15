@@ -2,7 +2,7 @@
 module TagFS.File (
 	File(..),
 	FSTree(..),
-	makeFSTree
+	makeFSTrees
 ) where
 
 import Prelude hiding (filter)
@@ -28,8 +28,8 @@ filter f (Branch s l) = case mapMaybe (filter f) l of
 groupHeadBy :: Eq b => (a -> (b, c)) -> [a] -> [(b, [c])]
 groupHeadBy f = map (fst.head &&& map snd) . groupBy ((==) `on` fst) . map f
 
-makeFSTree :: [File] -> FSTree File
-makeFSTree fs = Branch "" . go . map (getPath &&& id) $ sortBy (comparing getPath) fs where
+makeFSTrees :: [File] -> [FSTree File]
+makeFSTrees fs = go . map (getPath &&& id) $ sortBy (comparing getPath) fs where
 	go l = uncurry helper =<< groupHeadBy (\(p,f) -> (head p, (tail p, f))) l
 	helper _ [] = []
 	helper x pf = case span (\(a,_) -> null a) pf of
