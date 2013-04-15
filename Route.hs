@@ -3,8 +3,8 @@ module Route (
 	Route,
 	route,
 	getBranch,
-	match, matchHidden, matchSet, capture,
-	captureBool, choice, noRoute
+	match, matchHidden, matchSet, matchMap,
+	capture, captureBool, choice, noRoute
 ) where
 
 import Control.Monad
@@ -16,6 +16,8 @@ import Data.Function
 import Data.Ord
 import Data.Set (Set)
 import qualified Data.Set as S
+import Data.Map (Map)
+import qualified Data.Map as M
 
 data Segment s t a =
 	  Capture [s] t (s -> Maybe a)
@@ -166,6 +168,11 @@ matchHidden t s = match' [] t s
 --   actually matched segment.
 matchSet :: Ord s => t -> Set s -> Route s t s
 matchSet t s = capture (S.elems s) t (\s' -> boolToMaybe (s' `S.member` s) s')
+
+-- | A route which matches any segment from the keys of 'Map' @m@ tagged with @t@. It
+--   returns the value of the matched segment.
+matchMap :: Ord s => t -> Map s a -> Route s t a
+matchMap t m = capture (M.keys m) t (`M.lookup` m)
 
 -- | A route which matches based of @f@. If for the given segment, @f s@ is
 --   @Just a@, @a@ is returned, if it is @Nothing@, the route fails.
