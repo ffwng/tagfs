@@ -148,12 +148,8 @@ getBranch bt r bs = get bt bs (unRoute r) where
 	getPure t (Pure a) = Right (a, t)
 	getPure t _ = Left t
 
-boolToMaybe :: Bool -> a -> Maybe a
-boolToMaybe True a = Just a
-boolToMaybe False _ = Nothing
-
 match' :: Eq s => [s] -> t -> s -> Route s t ()
-match' es t s = capture es t (\s' -> boolToMaybe (s == s') ())
+match' es t s = void $ captureBool es t (== s)
 
 -- | A route which matches the segment @s@ tagged with @t@. If an other segment is provided,
 --   the route fails.
@@ -167,7 +163,7 @@ matchHidden t s = match' [] t s
 -- | A route which matches any segment from the 'Set' @s@ tagged with @t@. It returns the
 --   actually matched segment.
 matchSet :: Ord s => t -> Set s -> Route s t s
-matchSet t s = capture (S.elems s) t (\s' -> boolToMaybe (s' `S.member` s) s')
+matchSet t s = captureBool (S.elems s) t (`S.member` s)
 
 -- | A route which matches any segment from the keys of 'Map' @m@ tagged with @t@. It
 --   returns the value of the matched segment.
@@ -186,7 +182,7 @@ capture es t f = Route $ liftF (Capture es t f)
 -- | Matches all segments for which the given function returns 'True'.
 --   The result of the route is the matched segment.
 captureBool :: [s] -> t -> (s -> Bool) -> Route s t s
-captureBool es t f = capture es t $ \s -> boolToMaybe (f s) s
+captureBool es t f = capture es t $ \s -> if f s then Just s else Nothing
 
 -- | Propes a list of routes and takes the first one, that does not fail.
 --   Equivalent to 'msum', but more efficient.
