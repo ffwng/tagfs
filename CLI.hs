@@ -17,10 +17,10 @@ data Command =
 	TagFile FilePath [Tag]
 
 arguments' :: Parser [String]
-arguments' = many $ argument' Just (metavar "ARGS")
+arguments' = many $ strArgument (metavar "ARGS")
 
 args :: String -> Parser [String]
-args n = arguments1 Just (metavar n)
+args n = some $ strArgument (metavar n)
 
 mount :: Parser Command
 mount = Mount <$> arguments'
@@ -31,16 +31,22 @@ addFiles = AddFiles <$> args "FILES"
 removeFiles :: Parser Command
 removeFiles = RemoveFiles <$> args "FILES"
 
-maybeReader :: String -> (String -> Maybe a) -> Mod OptionFields a
-maybeReader e f = reader (maybe (Left $ ErrorMsg e) Right . f)
+--maybeReader :: String -> (String -> Maybe a) -> Mod OptionFields a
+--maybeReader e f = reader (maybe (Left $ ErrorMsg e) Right . f)
+maybeReadM :: String -> (String -> Maybe a) -> ReadM a
+maybeReadM e f = do
+  x <- str
+  case f x of
+    Just a -> return a
+    Nothing -> readerError e
 
 tag :: Parser Command
-tag = Tag <$> nullOption (maybeReader "Error: invalid tag." parseTag
-	<> short 't' <> long "tag" <> metavar "TAG") <*> args "FILES"
+tag = Tag <$> option (maybeReadM "Error: invalid tag." parseTag)
+	      (short 't' <> long "tag" <> metavar "TAG") <*> args "FILES"
 
 tagFile :: Parser Command
 tagFile = TagFile <$> strOption (short 'f' <> long "file" <> metavar "FILE")
-	<*> arguments parseTag (metavar "TAGS")
+	<*> many (argument (maybeReadM "invalid tag." parseTag) (metavar "TAGS"))
 
 tagfsCommand :: Parser Command
 tagfsCommand = subparser

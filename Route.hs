@@ -48,6 +48,10 @@ data Segment s t a =
 newtype Route s t a = Route { unRoute :: Free (Segment s t) a }
 	deriving (Functor, Applicative, Monad)
 
+instance Alternative (Route s t) where
+        empty = mzero
+        (<|>) = mplus
+
 -- | Note: for more than two alternatives, 'choice' is more efficient than 'msum'.
 instance MonadPlus (Route s t) where
 	mzero = noRoute
