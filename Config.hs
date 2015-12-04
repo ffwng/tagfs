@@ -33,11 +33,11 @@ writeConfig f c = writeFile f $ show c
 
 addFile :: (FilePath, FilePath) -> Config -> Config
 addFile (n,p) c = Config (T.addFile f $ tagSet c) (M.insert f p $ mapping c)
-	where f = File n
+	where f = File [n]
 
 removeFile :: FilePath -> Config -> Config
 removeFile n c = Config (T.removeFile f $ tagSet c) (M.delete f $ mapping c)
-	where f = File n
+	where f = File [n]
 
 tagFile :: Tag -> FilePath -> Config -> Config
-tagFile t f c = Config (T.addTag t (File f) $ tagSet c) (mapping c)
+tagFile t f c = Config (T.addTag t (File [f]) $ tagSet c) (mapping c)

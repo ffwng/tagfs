@@ -13,6 +13,7 @@ module TagFS (
 
 import TagFS.Tag (Tag(..), getName, getValue, parseTag, formatTag)
 import TagFS.File (File(..))
+import qualified TagFS.File as F
 
 import Route hiding (Route, route)
 import qualified Route as R
@@ -199,19 +200,27 @@ tagDir tag@(Extended n v) =
 		match (Just $ ExtendedBaseDir n) n
 		match (Just $ TagDir tag) v)
 
+fsTreesRoute :: [F.FSTree a] -> Route a
+fsTreesRoute = choice . map go where
+	go (F.Leaf s a) = match Nothing s >> return a
+	go (F.Branch s l) = do
+		match Nothing s
+		fsTreesRoute l
+
 regularFileRoute :: RouteBuilder Entry
 regularFileRoute = do
-	f <- gets predicate
-	fs <- queryFilesSet f <$> gets tagSet
-	s <- lift $ matchSet Nothing (S.map getPath fs)
-	return $ RegularFile (File s)
+	p <- gets predicate
+	fs <- queryFiles p <$> gets tagSet
+	--s <- lift $ matchSet Nothing (S.map getPath fs)
+	f <- lift . fsTreesRoute $ F.makeFSTrees fs
+	return $ RegularFile f
 
 
 tagFileExt :: FilePath
 tagFileExt = ".tags"
 
 tagFileRoute :: RouteBuilder Entry
-tagFileRoute = do
+{-tagFileRoute = do
 	file <- lift $ capture [] Nothing getFile
 	f <- gets predicate
 	ts <- gets tagSet
@@ -223,7 +232,8 @@ tagFileRoute = do
 		where
 			getFile n = case splitExtension n of
 				(name, ext) | ext == tagFileExt -> Just $ File name
-				_ -> Nothing
+				_ -> Nothing-}
+tagFileRoute = lift noRoute
 
 -- helper function for easier routing
 
